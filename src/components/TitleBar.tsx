@@ -5,7 +5,7 @@ import { TITLEBAR_HEIGHT } from '../lib/platform'
 const BUTTON = 'flex h-full w-[46px] items-center justify-center text-gray-500 transition-colors dark:text-gray-400'
 
 /**
- * 客户端的标题栏：窗口不用系统边框（tauri.conf.json 的 `decorations: false`），这里只有拖动区和右上角的三个按钮，
+ * Windows 客户端的标题栏包含拖动区和右上角的三个按钮，
  * 透明地叠在页面顶部；页面经 `--safe-area-top` 让出它的高度（main.tsx 按 `TITLEBAR_HEIGHT` 设置），顶栏的背景随之延伸到标题栏下。
  * 拖动区双击切换最大化由 Tauri 处理；关闭按钮发出普通的关闭请求，同样经过关闭前的确认与保存
  */

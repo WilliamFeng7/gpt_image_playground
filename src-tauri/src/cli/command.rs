@@ -267,14 +267,14 @@ fn emit(text: &str) {
     let _ = writeln!(out, "{text}").and_then(|()| out.flush());
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 async fn forward(tool: &str, args: &Map<String, Value>) -> Result<Value, String> {
     use std::io::ErrorKind;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     let pipe = match super::pipe::open().await {
         Ok(pipe) => pipe,
-        Err(err) if err.kind() == ErrorKind::NotFound => {
+        Err(err) if matches!(err.kind(), ErrorKind::NotFound | ErrorKind::ConnectionRefused) => {
             return Err("GPT Image Playground 没有运行，请先打开应用再重试".into());
         }
         Err(err) => return Err(format!("无法连接 GPT Image Playground：{err}")),
@@ -303,9 +303,9 @@ async fn forward(tool: &str, args: &Map<String, Value>) -> Result<Value, String>
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 async fn forward(_tool: &str, _args: &Map<String, Value>) -> Result<Value, String> {
-    Err("命令行只在 Windows 客户端中提供".into())
+    Err("命令行在 Windows 和 macOS 客户端中提供".into())
 }
 
 /// 把应用数据目录中的图片复制到 `dir`，按应用给出的文件名（`task-<任务 ID>-01.png` 等）命名，返回复制后的路径

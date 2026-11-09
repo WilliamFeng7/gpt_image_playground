@@ -6,7 +6,7 @@ import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { PULL_THRESHOLD, usePullUpToLoad } from '../hooks/usePullUpToLoad'
 import { checkForUpdates, ignoreReleaseVersion, loadOlderReleases, setUpdateModalOpen, updateModalScrollRef, useReleaseUpdates } from '../hooks/useReleaseUpdates'
 import { formatUpdateProgress } from '../lib/clientUpdate'
-import { isTauri, openExternal } from '../lib/platform'
+import { isMacTauri, isTauri, openExternal } from '../lib/platform'
 import { compareVersions, MANUAL_CHECK_MIN_INTERVAL_MS, RELEASES_PAGE_URL, shouldShowUpdate, stripReleaseHeading } from '../lib/releaseUpdates'
 import { useStore } from '../store'
 import MarkdownRenderer from './MarkdownRenderer'
@@ -104,7 +104,7 @@ function UpdateModalContent() {
   }, [releases.length])
 
   const hasUpdate = Boolean(latest && compareVersions(latest.version, __APP_VERSION__) > 0)
-  const showClientUpdate = isTauri && hasUpdate
+  const showClientUpdate = isTauri && !isMacTauri && hasUpdate
   // 没有版本列表时正文已显示加载中或失败详情，标题下只给简短状态，不重复
   const status = !releases.length
     ? !loading && (error || checkError)

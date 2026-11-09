@@ -1,5 +1,5 @@
-//! 数据目录的位置：默认为安装目录下的 data/（开发版为 src-tauri/dev-data/），可在设置中更改。
-//! 更改后的位置写在安装目录的 data-dir 文件中：一行路径，UTF-8；
+//! 数据目录位于 Windows 安装目录或 macOS 的 Application Support（开发版为 src-tauri/dev-data/），可在设置中更改。
+//! 更改后的位置写在应用配置目录的 data-dir 文件中：一行路径，UTF-8；
 //! 安装在可移动设备上且与安装目录同盘时省略盘符（以 \ 开头），U 盘换了盘符也能找到；其他情况写完整路径。
 //! 更改流程：设置页选好新目录并确认后，写入 data-dir.pending 并重启；下次启动时在初始化日志、存储和窗口之前，
 //! 把原目录完整复制到新目录、逐个核对大小并写入磁盘，全部成功后才改写 data-dir、删除原目录。
@@ -76,15 +76,27 @@ fn notice(
     })
 }
 
-/// 发布版为 exe 所在目录；debug 构建（含 tauri dev）为 src-tauri/
+/// macOS 的数据与迁移标记放在用户目录中，避免修改已签名的应用包
 pub fn base_dir() -> io::Result<PathBuf> {
     if cfg!(debug_assertions) {
         return Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
     }
-    let exe = std::env::current_exe()?;
-    exe.parent()
-        .map(Path::to_path_buf)
-        .ok_or_else(|| io::Error::other("无法确定程序所在目录"))
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+
+        let home = std::env::home_dir().ok_or_else(|| io::Error::other("无法确定用户目录"))?;
+        let base = home.join("Library/Application Support/com.williamfeng7.gpt-image-playground");
+        fs::DirBuilder::new().recursive(true).mode(0o700).create(&base)?;
+        Ok(base)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let exe = std::env::current_exe()?;
+        exe.parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| io::Error::other("无法确定程序所在目录"))
+    }
 }
 
 fn default_dir(base: &Path) -> PathBuf {
@@ -727,7 +739,33 @@ fn wait_previous(pid: Option<u32>, from: &Path, progress: &Progress) -> Result<(
     Err(Failure::new("原数据目录仍被占用"))
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+fn wait_previous(pid: Option<u32>, _from: &Path, progress: &Progress) -> Result<(), Failure> {
+    unsafe extern "C" {
+        fn kill(pid: i32, sig: i32) -> i32;
+    }
+
+    const ESRCH: i32 = 3;
+    let Some(pid) = pid
+        .and_then(|pid| i32::try_from(pid).ok())
+        .filter(|pid| *pid > 0)
+    else {
+        return Ok(());
+    };
+    for _ in 0..300 {
+        if progress.cancelled() {
+            return Err(Failure::cancelled());
+        }
+        // 信号 0 只检查进程是否存在，避免迁移时旧进程仍在写入 SQLite
+        if unsafe { kill(pid, 0) } != 0 && io::Error::last_os_error().raw_os_error() == Some(ESRCH) {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    Err(Failure::new("客户端未能及时退出"))
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 fn wait_previous(_pid: Option<u32>, _from: &Path, _progress: &Progress) -> Result<(), Failure> {
     Ok(())
 }
@@ -897,7 +935,7 @@ enum Choice {
     Exit,
 }
 
-/// 迁移期间独占打开锁文件，关闭时自动删除
+/// 迁移期间持有独占锁，防止两个客户端同时迁移
 fn lock(base: &Path) -> io::Result<fs::File> {
     let mut opts = fs::OpenOptions::new();
     opts.write(true).create(true);
@@ -907,7 +945,10 @@ fn lock(base: &Path) -> io::Result<fs::File> {
         // FILE_FLAG_DELETE_ON_CLOSE
         opts.share_mode(0).custom_flags(0x0400_0000);
     }
-    opts.open(base.join(LOCK))
+    let file = opts.open(base.join(LOCK))?;
+    #[cfg(target_os = "macos")]
+    file.try_lock()?;
+    Ok(file)
 }
 
 /// 确定数据目录，有待迁移的更改时先完成迁移。指向的目录无法使用时由 ask 询问用户
@@ -973,7 +1014,9 @@ fn startup(
     }
     match lock(base) {
         // ERROR_SHARING_VIOLATION：同时启动的另一个实例正在迁移并显示进度，本实例直接退出
-        Err(err) if err.raw_os_error() == Some(32) => std::process::exit(0),
+        Err(err) if cfg!(windows) && err.raw_os_error() == Some(32) => std::process::exit(0),
+        #[cfg(target_os = "macos")]
+        Err(err) if err.kind() == ErrorKind::WouldBlock => std::process::exit(0),
         Err(err) => {
             let _ = fs::remove_file(base.join(PENDING));
             notices.extend(notice(
@@ -1856,7 +1899,15 @@ mod tests {
         assert_eq!(dir, new);
         assert!(all_text(&notice.unwrap()).contains("已切换到新目录"));
         assert!(data.join("data.db").exists());
-        assert!(!base.join(RUNNING).exists() && !base.join(LOCK).exists());
+        assert!(!base.join(RUNNING).exists());
+        #[cfg(windows)]
+        assert!(!base.join(LOCK).exists());
+        #[cfg(target_os = "macos")]
+        {
+            let held = lock(base).unwrap();
+            assert_eq!(lock(base).unwrap_err().kind(), ErrorKind::WouldBlock);
+            drop(held);
+        }
 
         // 指向文件已写好但新目录无法访问：用户选择改用默认目录后，仍按原始内容判断为已完成，不能提示删除
         fs::remove_dir(&new).unwrap();
@@ -1885,12 +1936,14 @@ mod tests {
         );
     }
 
+    #[cfg(windows)]
     fn interrupted_text(base: &Path, dir: &str, pointer: Option<&str>, marker: &str) -> String {
         let pointer = Ok(pointer.map(str::to_string));
         all_text(&interrupted(base, Path::new(dir), &pointer, marker).unwrap())
     }
 
     /// 是否已写好只看指向文件原文与标记第 4 行是否完全相同
+    #[cfg(windows)]
     #[test]
     fn interrupted_compares_pointer_text() {
         // 同名换盘，原指向文件记录完整路径，复制中途崩溃

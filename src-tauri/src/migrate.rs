@@ -96,8 +96,26 @@ fn rename_noreplace(src: &Path, dst: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// 非 Windows 平台只用于编译和测试：先确认目标不存在再改名
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+fn rename_noreplace(src: &Path, dst: &Path) -> io::Result<()> {
+    use std::ffi::{c_char, c_int, c_uint, CString};
+    use std::os::unix::ffi::OsStrExt;
+
+    unsafe extern "C" {
+        fn renamex_np(from: *const c_char, to: *const c_char, flags: c_uint) -> c_int;
+    }
+
+    const RENAME_EXCL: c_uint = 0x0000_0004;
+    let src = CString::new(src.as_os_str().as_bytes())?;
+    let dst = CString::new(dst.as_os_str().as_bytes())?;
+    if unsafe { renamex_np(src.as_ptr(), dst.as_ptr(), RENAME_EXCL) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// 其他平台的编译和测试使用普通改名
+#[cfg(not(any(windows, target_os = "macos")))]
 fn rename_noreplace(src: &Path, dst: &Path) -> io::Result<()> {
     if fs::symlink_metadata(dst).is_ok() {
         return Err(ErrorKind::AlreadyExists.into());

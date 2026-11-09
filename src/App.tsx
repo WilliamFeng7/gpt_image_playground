@@ -40,7 +40,7 @@ import { showStartupNotices, type NoticeSection } from './components/startupNoti
 import { useGlobalClickSuppression } from './lib/clickSuppression'
 import { takeDataDirNotice } from './lib/dbTauri'
 import { installCliBridge } from './lib/cliBridge'
-import { isTauri, TITLEBAR_HEIGHT } from './lib/platform'
+import { isMacTauri, isTauri, TITLEBAR_HEIGHT } from './lib/platform'
 import { setSaveToDefaultDir } from './lib/saveFile'
 import { setTauriLogEnabled } from './lib/tauriLog'
 import { getTauriStorageLoadError } from './lib/tauriStorage'
@@ -63,7 +63,7 @@ export default function App() {
   useGlobalClickSuppression()
   useCloseConfirm()
   useSaveLocationPrompt()
-  useAutoUpdateCheck(autoCheckUpdate)
+  useAutoUpdateCheck(autoCheckUpdate && !isMacTauri)
   usePrivacyModeShortcut()
   // 运行中的链接导入要等启动时的预置配置写入完，否则会被启动流程覆盖
   useImportLinks(startupImportDone)

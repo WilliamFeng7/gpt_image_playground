@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { checkForUpdates, setUpdateModalOpen, useReleaseUpdates } from '../../hooks/useReleaseUpdates'
+import { isMacTauri } from '../../lib/platform'
 import { compareVersions, LICENSE_URL, MANUAL_CHECK_MIN_INTERVAL_MS } from '../../lib/releaseUpdates'
 import { useStore } from '../../store'
 import { ChevronRightIcon, ExternalLinkIcon, GithubIcon, HistoryIcon, RefreshIcon } from '../icons'
@@ -158,7 +159,15 @@ export default function AboutSettingsTab({ onOpenFontLicenses }: { onOpenFontLic
       </div>
 
       <AboutCard icon={<RefreshIcon className="h-4 w-4" />} title="版本与更新">
-        {hasUpdate && !checking ? (
+        {isMacTauri ? (
+          <AboutRow
+            icon={<RefreshIcon className="h-4 w-4" />}
+            title="macOS 安装包"
+            subtitle={`当前版本 v${__APP_VERSION__} · Apple Silicon`}
+            href="https://github.com/WilliamFeng7/gpt_image_playground/actions/workflows/macos-arm64.yml"
+            right={EXTERNAL}
+          />
+        ) : hasUpdate && !checking ? (
           <AboutRow
             highlight
             icon={<RefreshIcon className="h-4 w-4" />}
@@ -184,7 +193,7 @@ export default function AboutSettingsTab({ onOpenFontLicenses }: { onOpenFontLic
         )}
         <AboutRow
           icon={<HistoryIcon className="h-4 w-4" />}
-          title="更新日志"
+          title={isMacTauri ? '上游更新日志' : '更新日志'}
           onClick={() => setUpdateModalOpen(true)}
           right={CHEVRON}
         />

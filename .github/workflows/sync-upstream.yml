@@ -28,6 +28,7 @@ jobs:
       base: ${{ steps.merge.outputs.base }}
       upstream: ${{ steps.merge.outputs.upstream }}
       tree: ${{ steps.merge.outputs.tree }}
+      native: ${{ steps.merge.outputs.native }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -60,6 +61,11 @@ jobs:
 
           tree=$(git write-tree)
           printf 'base=%s\nupstream=%s\ntree=%s\n' "$base" "$upstream" "$tree" >> "$GITHUB_OUTPUT"
+          if git diff --cached --quiet -- src-tauri package.json package-lock.json vite.config.ts scripts skills; then
+            echo 'native=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'native=true' >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: steps.merge.outputs.tree != ''
@@ -74,9 +80,20 @@ jobs:
           npm run build
           npm test
 
-  publish:
+  macos:
     needs: validate
-    if: needs.validate.outputs.tree != ''
+    if: needs.validate.outputs.native == 'true'
+    uses: ./.github/workflows/macos-arm64.yml
+    with:
+      base: ${{ needs.validate.outputs.base }}
+      upstream: ${{ needs.validate.outputs.upstream }}
+      tree: ${{ needs.validate.outputs.tree }}
+
+  publish:
+    needs: [validate, macos]
+    if: >-
+      !cancelled() && needs.validate.result == 'success' && needs.validate.outputs.tree != '' &&
+      (needs.macos.result == 'success' || needs.validate.outputs.native == 'false')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

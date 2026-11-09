@@ -1,0 +1,16 @@
+{
+  "identifier": "com.williamfeng7.gpt-image-playground",
+  "plugins": {
+    "updater": {
+      "endpoints": []
+    }
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "targets": ["app", "dmg"],
+    "icon": ["icons/icon.png"],
+    "macOS": {
+      "minimumSystemVersion": "14.0"
+    }
+  }
+}

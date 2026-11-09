@@ -1,13 +1,14 @@
-//! 命令行：`gpt-image-playground-cli`（安装为 `bin\gpt-image-playground.exe`，见 `command`）的每条命令经命名管道（见 `pipe`）
-//! 交给正在运行的应用；应用没有运行时命令直接失败。
+//! 命令行通过 Windows 命名管道或 macOS Unix 套接字把命令交给正在运行的应用。
 //! 生图、设置和历史记录都在前端，应用这一侧只把命令以 `cli-request` 事件转给主窗口，前端执行完用 `cli_respond` 回传。
 //! - 管道上一个连接一条命令：命令行写一行请求 `{"tool","arguments"}`，应用回一行 `{"text","data","files"}` 或 `{"error"}`；
 //!   之前可先回若干行 `{"progress"}`（例如生图提交后的任务 ID，由前端用 `cli_progress` 发出）。
 //! - 前端注册好监听后调用 `cli_ready`；页面开始重载时清除就绪状态并中断等待中的命令（`reset`），未就绪时直接返回错误。
 //! - 设置页安装随附的 Skill，见 `skill`。
-//! - 只在 Windows 上提供。
 pub mod command;
 #[cfg(windows)]
+mod pipe;
+#[cfg(target_os = "macos")]
+#[path = "cli/socket.rs"]
 mod pipe;
 pub mod skill;
 
@@ -43,14 +44,14 @@ impl Cli {
 
 /// 启动时调用：创建管道并一直接受命令行的连接；管道名被占用时只记录日志，应用照常运行
 pub fn start(app: &AppHandle) {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             let mut listener = match pipe::Listener::bind() {
                 Ok(listener) => listener,
                 Err(err) => {
-                    log::warn!("无法创建命令行管道，命令行将无法调用应用：{err}");
+                    log::warn!("无法创建命令行连接，命令行将无法调用应用：{err}");
                     return;
                 }
             };
@@ -61,19 +62,19 @@ pub fn start(app: &AppHandle) {
                     }
                     Ok(None) => {}
                     Err(err) => {
-                        log::warn!("命令行管道无法继续接受连接：{err}");
+                        log::warn!("无法继续接受命令行连接：{err}");
                         return;
                     }
                 }
             }
         });
     }
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     let _ = app;
 }
 
-#[cfg(windows)]
-async fn serve(app: AppHandle, conn: tokio::net::windows::named_pipe::NamedPipeServer) {
+#[cfg(any(windows, target_os = "macos"))]
+async fn serve(app: AppHandle, conn: impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin) {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     let (read, mut write) = tokio::io::split(conn);

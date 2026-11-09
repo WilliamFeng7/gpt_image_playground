@@ -38,7 +38,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         // 只供 Rust 侧的保存命令弹出对话框，不向前端开放插件命令
         .plugin(tauri_plugin_dialog::init())
-        // 边框由 tauri.conf.json 决定（不用系统边框，见 src/components/TitleBar.tsx），不跟随保存的旧值
+        // 边框由当前平台决定，不跟随保存的旧值
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(
@@ -144,6 +144,7 @@ pub fn run() {
             // 存储需在主窗口创建前就绪，前端加载后立即会读取任务和图片
             let state = storage::init();
             // WebView2 数据放在数据目录的 webview/ 下，随数据目录走；数据目录不可用时用默认位置，不影响窗口创建
+            #[cfg(not(target_os = "macos"))]
             let webview_dir = state
                 .0
                 .as_ref()
@@ -187,10 +188,14 @@ pub fn run() {
             )?
             .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
             .background_color(bg);
-            match webview_dir {
-                Some(dir) => builder.data_directory(dir).build()?,
-                None => builder.build()?,
+            #[cfg(not(target_os = "macos"))]
+            let builder = match webview_dir {
+                Some(dir) => builder.data_directory(dir),
+                None => builder,
             };
+            #[cfg(target_os = "macos")]
+            let builder = builder.decorations(true);
+            builder.build()?;
             Ok(())
         })
         .build(tauri::generate_context!())

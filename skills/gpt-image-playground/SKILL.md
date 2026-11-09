@@ -1,6 +1,6 @@
 ---
 name: gpt-image-playground
-description: Generate and edit images with the user's GPT Image Playground app on this Windows PC through its `gpt-image-playground` CLI, and read or change everything in the app's settings (API profiles and keys, models, providers, custom providers, image parameters, batch prompts, proxy and other preferences). Use when the user asks to draw, generate, edit or restyle an image, e.g. "画一张……", "生成一张图", "把这张图改成……", "用 GPT Image Playground 出图", or to look up past results in its history; also when they want to add or switch an API profile, set an API key, change the model, size, quality or other parameters, or configure a custom image API provider in the app.
+description: Generate and edit images with the user's GPT Image Playground desktop app through its CLI, and read or change the app's settings (API profiles and keys, models, providers, custom providers, image parameters, batch prompts, proxy and other preferences). Use when the user asks to draw, generate, edit or restyle an image, e.g. "画一张……", "生成一张图", "把这张图改成……", "用 GPT Image Playground 出图", or to look up past results in its history; also when they want to add or switch an API profile, set an API key, change the model, size, quality or other parameters, or configure a custom image API provider in the app.
 ---
 
 # 用 GPT Image Playground 生图与修改设置
@@ -9,14 +9,16 @@ GPT Image Playground 是用户电脑上的生图应用。它的 CLI `gpt-image-p
 
 ## 调用方式
 
-- 安装时勾选了“添加到 PATH”可以直接调用，否则写完整路径，默认是 `%LOCALAPPDATA%\GPT Image Playground\bin\gpt-image-playground.exe`。参数与 JSON 字段见 [references/cli.md](references/cli.md)。
+- Windows 安装时勾选“添加到 PATH”后可直接调用 `gpt-image-playground`，默认完整路径为 `%LOCALAPPDATA%\GPT Image Playground\bin\gpt-image-playground.exe`。
+- macOS 安装到「应用程序」后，使用 `"/Applications/GPT Image Playground.app/Contents/MacOS/gpt-image-playground-cli"`。下文命令示例中的 `gpt-image-playground` 可替换为该完整路径。
+- 参数与 JSON 字段见 [references/cli.md](references/cli.md)。
 - 应用需要保持打开。提示应用没有运行时，请用户打开后再试。
 
 ## 生图
 
 ```
 gpt-image-playground generate 一只趴在键盘上的橘猫 --quality low
-gpt-image-playground generate 把背景换成海边 --image D:\图片\猫.png --size 1536x1024
+gpt-image-playground generate 把背景换成海边 --image 猫.png --size 1536x1024
 gpt-image-playground generate --prompt 春天的森林 --prompt 冬天的森林 -n 2
 ```
 

@@ -331,6 +331,22 @@ pub fn http_cancel(id: String, state: State<'_, Requests>) {
 mod tests {
     use super::*;
 
+    struct FailingDns;
+
+    impl reqwest::dns::Resolve for FailingDns {
+        fn resolve(&self, _: reqwest::dns::Name) -> reqwest::dns::Resolving {
+            Box::pin(async { Err(std::io::Error::other("fixture resolver failure").into()) })
+        }
+    }
+
+    fn test_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .no_proxy()
+            .dns_resolver(std::sync::Arc::new(FailingDns))
+            .build()
+            .unwrap()
+    }
+
     /// 应用启动时在 lib.rs 安装加密实现，测试中需自行安装
     fn init() {
         let _ = rustls::crypto::ring::default_provider().install_default();
@@ -376,7 +392,7 @@ mod tests {
                 .unwrap();
         });
         let url = format!("http://127.0.0.1:{port}/v1?key=secret");
-        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let client = test_client();
         let err = client
             .get(&url)
             .send()
@@ -394,13 +410,13 @@ mod tests {
         assert!(!detail.chain.contains("secret"), "{}", detail.chain);
 
         // 有 source 的连接错误：报错和用于日志的错误链都不含地址
-        let msg = send_direct("https://gip-test.invalid/v1?key=secret".into()).await;
-        assert!(!msg.contains("secret"), "{msg}");
         let err = client
             .get("https://gip-test.invalid/v1?key=secret")
             .send()
             .await
             .unwrap_err();
+        let msg = send_error(&err, false);
+        assert!(!msg.contains("secret"), "{msg}");
         assert!(!describe(&err).chain.contains("secret"));
     }
 
@@ -425,7 +441,13 @@ mod tests {
             .port();
         let msg = send_direct(format!("http://127.0.0.1:{port}/")).await;
         // 只附系统错误码，不附错误链和系统说明
-        let code = if cfg!(windows) { 10061 } else { 111 };
+        let code = if cfg!(windows) {
+            10061
+        } else if cfg!(target_os = "macos") {
+            61
+        } else {
+            111
+        };
         assert_eq!(
             msg,
             format!("连接被拒绝，请检查 API 地址和端口是否正确、服务是否已启动。（错误码 {code}）")
@@ -435,7 +457,12 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn reports_dns_error_without_chain() {
         init();
-        let msg = send_direct("https://gip-test.invalid/".into()).await;
+        let err = test_client()
+            .get("https://gip-test.invalid/")
+            .send()
+            .await
+            .unwrap_err();
+        let msg = send_error(&err, false);
         assert!(
             msg.starts_with("无法解析域名，请检查 API 地址是否正确。"),
             "{msg}"

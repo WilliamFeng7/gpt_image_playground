@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AppSettings } from '../../types'
 import { markSaveLocationAsked } from '../../hooks/useSaveLocationPrompt'
 import { DEFAULT_PRIVACY_MODE_SHORTCUT } from '../../lib/keyboardShortcut'
-import { isTauri } from '../../lib/platform'
+import { isMacTauri, isTauri } from '../../lib/platform'
 import { getDefaultSaveDir, openDefaultSaveDir } from '../../lib/saveFile'
 import { openTauriLogDir } from '../../lib/tauriLog'
 import { useStore } from '../../store'
@@ -439,7 +439,7 @@ export default function GeneralSettingsTab({
         </div>
       </section>
       {isTauri && <ProxySettingsSection />}
-      <section className="space-y-4">
+      {!isMacTauri && <section className="space-y-4">
         <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">更新</h4>
         <div className="block">
           <div className="mb-1 flex items-center justify-between">
@@ -459,7 +459,7 @@ export default function GeneralSettingsTab({
             开启后，启动时会从 GitHub 获取版本信息，有新版本时在左上角显示 NEW 提示。关闭后可在“关于”中手动检查更新。
           </div>
         </div>
-      </section>
+      </section>}
       {isTauri && (
         <section className="space-y-4">
           <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">诊断</h4>
