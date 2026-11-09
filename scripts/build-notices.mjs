@@ -1,6 +1,6 @@
 // 生成第三方许可清单 src/assets/third-party-notices.txt（npm run notices），由「设置 → 关于 → 第三方许可」弹窗显示。
 // 生成结果提交进仓库，Web 版构建不需要 cargo-about；Rust 或前端依赖变化后重新运行并提交。
-// 内容：third-party-licenses/ 中的字体许可，cargo-about 汇总的 Rust 依赖（配置见 src-tauri/about.toml，Windows 目标的普通与构建依赖），
+// 内容包括项目许可、third-party-licenses/ 中的字体许可、cargo-about 汇总的 Apple Silicon Rust 依赖，
 // 以及 npm ls --omit=dev 列出的前端依赖。
 // 需要 cargo-about：cargo install cargo-about --version 0.9.2 --locked --features cli
 import { execFileSync, execSync } from 'node:child_process'
@@ -16,11 +16,13 @@ const read = (path) => readFileSync(path, 'utf8').replace(/^﻿/, '').replace(/\
 const parts = [
   'GPT Image Playground 第三方许可清单 / Third-Party Notices',
   '',
-  'GPT Image Playground 以 MIT 协议发布。本文件列出 GPT Image Playground 使用的第三方组件及其许可原文，其中 Rust 依赖仅用于 Windows 客户端。',
-  'GPT Image Playground is released under the MIT License. This file lists the third-party components used by GPT Image Playground and their license texts. Rust dependencies apply to the Windows client only.',
+  'GPT Image Playground 以 MIT 协议发布。本文件包含项目许可及 Apple Silicon 客户端的第三方许可。',
+  'GPT Image Playground is released under the MIT License. This file includes the project license and third-party notices for the Apple Silicon client.',
 ]
 
 const section = (title, body) => parts.push('', '', RULE, title, RULE, '', body)
+
+section('GPT Image Playground（MIT）', read('LICENSE'))
 
 section('HarmonyOS Sans SC 字体', [
   '版权方：Huawei Device Co., Ltd.',

@@ -33,9 +33,14 @@ jobs:
         env:
           UPSTREAM: ${{ inputs.upstream }}
           TREE: ${{ inputs.tree }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        shell: bash
         run: |
           git fetch --no-tags https://github.com/CookSleep/gpt_image_playground.git "$UPSTREAM"
-          git -c user.name=ci -c user.email=ci@users.noreply.github.com merge --no-ff --no-commit "$UPSTREAM"
+          git show HEAD:scripts/merge-upstream.sh | bash -s -- "$UPSTREAM"
           test "$(git write-tree)" = "$TREE"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7

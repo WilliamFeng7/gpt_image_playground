@@ -48,7 +48,7 @@ jobs:
             exit 0
           fi
 
-          if ! git merge --no-ff --no-commit "$upstream"; then
+          if ! git show HEAD:scripts/merge-upstream.sh | bash -s -- "$upstream"; then
             echo '::error::Upstream merge needs conflict resolution. The fork was left at its current commit.'
             git diff --name-only --diff-filter=U
             exit 1
@@ -117,7 +117,7 @@ jobs:
           fi
 
           git fetch --no-tags "$UPSTREAM_URL" "$UPSTREAM"
-          git merge --no-ff --no-commit "$UPSTREAM"
+          git show HEAD:scripts/merge-upstream.sh | bash -s -- "$UPSTREAM"
           git diff --cached --quiet -- .github/workflows .github/actions
           test "$(git write-tree)" = "$TREE"
           git commit -m "Merge upstream main at ${UPSTREAM:0:12}"

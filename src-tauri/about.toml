@@ -11,7 +11,7 @@ accepted = [
     "Unicode-3.0",
     "MPL-2.0",
 ]
-# Rust 部分只用于 Windows 客户端
-targets = ["x86_64-pc-windows-msvc"]
+# Apple Silicon 安装包的 Rust 依赖
+targets = ["aarch64-apple-darwin"]
 # 开发依赖不随程序分发
 ignore-dev-dependencies = true

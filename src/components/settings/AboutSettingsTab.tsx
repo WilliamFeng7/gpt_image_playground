@@ -164,7 +164,7 @@ export default function AboutSettingsTab({ onOpenFontLicenses }: { onOpenFontLic
             icon={<RefreshIcon className="h-4 w-4" />}
             title="macOS 安装包"
             subtitle={`当前版本 v${__APP_VERSION__} · Apple Silicon`}
-            href="https://github.com/WilliamFeng7/gpt_image_playground/actions/workflows/macos-arm64.yml"
+            href="https://github.com/WilliamFeng7/gpt_image_playground/releases/latest"
             right={EXTERNAL}
           />
         ) : hasUpdate && !checking ? (
