@@ -1,0 +1,108 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '3-58/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_URL: https://github.com/CookSleep/gpt_image_playground.git
+  GIT_AUTHOR_NAME: github-actions[bot]
+  GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+  GIT_COMMITTER_NAME: github-actions[bot]
+  GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+
+jobs:
+  validate:
+    if: github.repository == 'WilliamFeng7/gpt_image_playground' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      base: ${{ steps.merge.outputs.base }}
+      upstream: ${{ steps.merge.outputs.upstream }}
+      tree: ${{ steps.merge.outputs.tree }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Merge upstream in a read-only job
+        id: merge
+        shell: bash
+        run: |
+          git fetch --no-tags "$UPSTREAM_URL" refs/heads/main
+          base=$(git rev-parse HEAD)
+          upstream=$(git rev-parse FETCH_HEAD)
+          if git merge-base --is-ancestor "$upstream" "$base"; then
+            echo 'Fork already contains upstream main.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if ! git merge --no-ff --no-commit "$upstream"; then
+            echo '::error::Upstream merge needs conflict resolution. The fork was left at its current commit.'
+            git diff --name-only --diff-filter=U
+            exit 1
+          fi
+
+          if ! git diff --cached --quiet -- .github/workflows .github/actions; then
+            echo '::error::Upstream changes GitHub Actions configuration. Review the changes before merging.'
+            exit 1
+          fi
+
+          tree=$(git write-tree)
+          printf 'base=%s\nupstream=%s\ntree=%s\n' "$base" "$upstream" "$tree" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        if: steps.merge.outputs.tree != ''
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Build and test the merge
+        if: steps.merge.outputs.tree != ''
+        run: |
+          npm ci
+          npm run build
+          npm test
+
+  publish:
+    needs: validate
+    if: needs.validate.outputs.tree != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Push the tested merge
+        env:
+          BASE: ${{ needs.validate.outputs.base }}
+          UPSTREAM: ${{ needs.validate.outputs.upstream }}
+          TREE: ${{ needs.validate.outputs.tree }}
+        shell: bash
+        run: |
+          if [[ $(git rev-parse HEAD) != "$BASE" ]]; then
+            echo 'Fork main advanced during validation. The next run will retry.'
+            exit 0
+          fi
+
+          git fetch --no-tags "$UPSTREAM_URL" "$UPSTREAM"
+          git merge --no-ff --no-commit "$UPSTREAM"
+          git diff --cached --quiet -- .github/workflows .github/actions
+          test "$(git write-tree)" = "$TREE"
+          git commit -m "Merge upstream main at ${UPSTREAM:0:12}"
+          git push origin HEAD:refs/heads/main
+          printf 'Merged upstream `%s` into the fork.\n' "$UPSTREAM" >> "$GITHUB_STEP_SUMMARY"
