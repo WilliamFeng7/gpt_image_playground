@@ -231,7 +231,7 @@ async function listHistory(args: Record<string, unknown>) {
   const limit = Math.min(50, Math.max(1, Math.floor(Number(args.limit) || 10)))
   const offset = Math.max(0, Math.floor(Number(args.offset) || 0))
   const ids = Array.isArray(args.task_ids) ? args.task_ids.map(String) : null
-  const all = useStore.getState().tasks
+  const all = [...useStore.getState().tasks].sort((a, b) => b.createdAt - a.createdAt)
   const tasks = ids ? all.filter((task) => ids.includes(task.id)) : all.slice(offset, offset + limit)
   const missing = ids?.filter((id) => !all.some((task) => task.id === id)) ?? []
   return json({
