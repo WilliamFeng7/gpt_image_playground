@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import type { AgentMessage, AgentRound, TaskRecord } from '../types'
-import { editOutputs, regenerateAgentAssistantMessage, removeMultipleTasks, removeTask, reuseConfig, useStore } from '../store'
-import { getActiveAgentRounds, getAgentBranchLeafId, getAgentRoundPath, getConversationSearchText, getAgentRoundTaskIds, getAgentSiblingRounds } from '../lib/agentConversationState'
+import { editOutputs, regenerateAgentAssistantMessage, removeTask, reuseConfig, useStore } from '../store'
+import { getActiveAgentRounds, getAgentBranchLeafId, getAgentRoundPath, getAgentRoundTaskIds, getAgentSiblingRounds } from '../lib/agentConversationState'
 import { ensureImageCached, getCachedImage } from '../lib/imageCache'
 import { getImageComments, getPromptMentionParts } from '../lib/promptImageMentions'
 import { replaceAgentPromptImageReferencesForApi } from '../lib/agentImageReferences'
@@ -12,11 +12,12 @@ import { getAgentAssistantBlocks, getAgentAssistantCopyContent, getRoundTaskSlot
 import { createMaskPreviewDataUrl } from '../lib/canvasImage'
 import { downloadImageEntriesAsZip, downloadImageIds, getDownloadErrorMessage, getImageZipEntries, withSaveLocation } from '../lib/downloadImages'
 import { useVisibleAgentConversations } from '../hooks/usePrivacyMode'
+import AgentHistorySidebar from './AgentHistorySidebar'
 import TaskCard from './TaskCard'
 import { CommentBadge } from './CommentMarks'
 import MarkdownRenderer from './MarkdownRenderer'
 import { TooltipButton as AgentActionButton } from './TooltipButton'
-import { TrashIcon, DownloadIcon, EditIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, SidebarLeftIcon, FavoriteIcon, CloseIcon, CopyIcon, RefreshIcon, ArrowDownIcon } from './icons'
+import { TrashIcon, DownloadIcon, EditIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, SidebarLeftIcon, FavoriteIcon, CloseIcon, CopyIcon, RefreshIcon, ArrowDownIcon, PlusIcon, SparklesIcon } from './icons'
 
 function ChatImageThumb({ imageId, imageIndex, maskImageId, round }: { imageId: string; imageIndex: number; maskImageId?: string | null; round: AgentRound }) {
   const [src, setSrc] = useState<string>(() => getCachedImage(imageId) || '')
@@ -82,10 +83,6 @@ function AgentStreamingCursor() {
   )
 }
 
-function formatTime(value: number) {
-  return new Date(value).toLocaleString()
-}
-
 function AgentWebSearchInlineStatus({ status }: { status: AgentWebSearchStatus }) {
   return (
     <span className="inline-flex text-sm font-medium text-gray-500 dark:text-gray-400">
@@ -117,8 +114,6 @@ export default function AgentWorkspace() {
   const activeConversationId = useStore((s) => s.activeAgentConversationId)
   const createConversation = useStore((s) => s.createAgentConversation)
   const setActiveConversationId = useStore((s) => s.setActiveAgentConversationId)
-  const renameConversation = useStore((s) => s.renameAgentConversation)
-  const deleteConversation = useStore((s) => s.deleteAgentConversation)
   const deleteAgentRound = useStore((s) => s.deleteAgentRound)
   const deleteAgentAssistantMessage = useStore((s) => s.deleteAgentAssistantMessage)
   const sidebarCollapsed = useStore((s) => s.agentSidebarCollapsed)
@@ -136,28 +131,24 @@ export default function AgentWorkspace() {
   const setAppMode = useStore((s) => s.setAppMode)
   const agentScrollToBottomAfterSubmit = useStore((s) => s.settings.agentScrollToBottomAfterSubmit)
   const agentEditingRoundId = useStore((s) => s.agentEditingRoundId)
-  const agentEditingConversationId = useStore((s) => s.agentEditingConversationId)
-  const setAgentEditingConversationId = useStore((s) => s.setAgentEditingConversationId)
   const setAgentEditingRoundId = useStore((s) => s.setAgentEditingRoundId)
   const setActiveAgentRoundId = useStore((s) => s.setActiveAgentRoundId)
   const showToast = useStore((s) => s.showToast)
   const openFavoritePicker = useStore((s) => s.openFavoritePicker)
   const privacyMode = useStore((s) => Boolean(s.privacyMode))
-  const agentGeneratingTitleIds = useStore((s) => s.agentGeneratingTitleIds)
+  const privacyModeEpoch = useStore((s) => s.privacyModeEpoch)
   const conversation = conversations.find((item) => item.id === activeConversationId) ?? null
-  const [editingConversationTitle, setEditingConversationTitle] = useState('')
+  const [wideHistory, setWideHistory] = useState(() => window.matchMedia('(min-width: 1024px)').matches)
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
+  const historyVisible = wideHistory ? !sidebarCollapsed : historyDrawerOpen
+  const historyToggleRef = useRef<HTMLButtonElement>(null)
 
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const bottomSentinelRef = useRef<HTMLDivElement>(null)
   const messageRefs = useRef(new Map<string, HTMLElement>())
   const [scrollTargetRoundId, setScrollTargetRoundId] = useState<string | null>(null)
   const [pullDownOffset, setPullDownOffset] = useState(0)
-  const [mobileTopBarVisible, setMobileTopBarVisible] = useState(true)
-  const [conversationSearchQuery, setConversationSearchQuery] = useState('')
-  const [conversationActionsId, setConversationActionsId] = useState<string | null>(null)
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true)
   const touchStartY = useRef(-1)
-  const conversationLongPressTimer = useRef<number | null>(null)
   const autoScrollStateRef = useRef<{ conversationId: string | null; lastUserMessageSignature: string | null }>({ conversationId: null, lastUserMessageSignature: null })
   const errorCopyPointerDownRef = useRef<{ x: number; y: number } | null>(null)
 
@@ -172,10 +163,15 @@ export default function AgentWorkspace() {
     setIsScrolledToBottom(sentinel.getBoundingClientRect().top <= viewportHeight + 24)
   }, [appMode])
 
-  const scrollToAgentBottom = useCallback(() => {
+  const scrollToAgentBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     // 超出可滚动范围时浏览器会停在底部
-    getPageScroller().scrollTo({ top: Number.MAX_SAFE_INTEGER, behavior: 'smooth' })
+    getPageScroller().scrollTo({ top: Number.MAX_SAFE_INTEGER, behavior })
   }, [])
+
+  const handleCreateConversation = () => {
+    createConversation()
+    setHistoryDrawerOpen(false)
+  }
 
   const handleTouchStart = (e: React.TouchEvent) => {
     const touchY = e.touches[0]?.clientY ?? -1
@@ -227,10 +223,14 @@ export default function AgentWorkspace() {
   }
 
   useEffect(() => {
-    if (sidebarCollapsed) {
-      setAgentEditingConversationId(null)
+    const media = window.matchMedia('(min-width: 1024px)')
+    const handleChange = (e: MediaQueryListEvent) => {
+      setWideHistory(e.matches)
+      if (e.matches) setHistoryDrawerOpen(false)
     }
-  }, [sidebarCollapsed, setAgentEditingConversationId])
+    media.addEventListener('change', handleChange)
+    return () => media.removeEventListener('change', handleChange)
+  }, [])
 
   useEffect(() => {
     if (appMode !== 'agent') return
@@ -260,7 +260,7 @@ export default function AgentWorkspace() {
   // 鼠标没有下拉手势：页面已在顶部时继续向上滚动滚轮展示顶栏，向下滚动收起。
   // 只认页面上的滚动：弹窗、大图和输入栏不在 [data-page-scroll] 里，窄屏的对话列表抽屉在里面，打开时不处理；Ctrl+滚轮与触控板捏合是缩放
   useEffect(() => {
-    if (appMode !== 'agent' || !sidebarCollapsed) return
+    if (appMode !== 'agent' || historyDrawerOpen || wideHistory) return
 
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || !(e.target instanceof Element) || !e.target.closest('[data-page-scroll]')) return
@@ -273,37 +273,22 @@ export default function AgentWorkspace() {
 
     window.addEventListener('wheel', handleWheel, { passive: true })
     return () => window.removeEventListener('wheel', handleWheel)
-  }, [agentMobileHeaderVisible, appMode, setAgentMobileHeaderVisible, sidebarCollapsed])
+  }, [agentMobileHeaderVisible, appMode, historyDrawerOpen, setAgentMobileHeaderVisible, wideHistory])
 
   useEffect(() => {
     if (appMode !== 'agent') return
 
-    setMobileTopBarVisible(true)
-    let lastScrollY = getPageScrollTop()
-    let ticking = false
+    let frame = 0
 
     const handleScroll = () => {
-      if (ticking) return
-
-      window.requestAnimationFrame(() => {
-        const currentScrollY = getPageScrollTop()
-        if (currentScrollY < 20) {
-          setMobileTopBarVisible(true)
-        } else if (currentScrollY > lastScrollY + 10) {
-          setMobileTopBarVisible(false)
-        } else if (currentScrollY < lastScrollY - 10) {
-          setMobileTopBarVisible(true)
-        }
-
+      if (frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
         updateIsScrolledToBottom()
-
-        lastScrollY = currentScrollY
-        ticking = false
       })
-      ticking = true
     }
 
-    const initialFrame = window.requestAnimationFrame(updateIsScrolledToBottom)
+    handleScroll()
     const visualViewport = window.visualViewport
     const scroller = getPageScroller()
     scroller.addEventListener('scroll', handleScroll, { passive: true })
@@ -311,7 +296,7 @@ export default function AgentWorkspace() {
     visualViewport?.addEventListener('resize', updateIsScrolledToBottom)
 
     return () => {
-      window.cancelAnimationFrame(initialFrame)
+      window.cancelAnimationFrame(frame)
       scroller.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', updateIsScrolledToBottom)
       visualViewport?.removeEventListener('resize', updateIsScrolledToBottom)
@@ -333,17 +318,6 @@ export default function AgentWorkspace() {
       }
     }
   }, [appMode, conversationsLoaded, conversations, conversation, createConversation, setActiveConversationId])
-
-  const sortedConversations = useMemo(
-    () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
-    [conversations],
-  )
-
-  const filteredConversations = useMemo(() => {
-    const query = conversationSearchQuery.trim().toLocaleLowerCase()
-    if (!query) return sortedConversations
-    return sortedConversations.filter((item) => getConversationSearchText(item).includes(query))
-  }, [conversationSearchQuery, sortedConversations])
 
   const activeRounds = useMemo(
     () => conversation ? getActiveAgentRounds(conversation) : [],
@@ -372,17 +346,16 @@ export default function AgentWorkspace() {
       ? `${lastUserMessage.id}:${lastUserMessage.createdAt}:${lastUserMessage.content}`
       : null
     const previous = autoScrollStateRef.current
+    const conversationChanged = previous.conversationId !== conversationId
     const shouldScroll = appMode === 'agent' &&
-      agentScrollToBottomAfterSubmit &&
-      previous.conversationId === conversationId &&
       lastUserMessageSignature != null &&
-      previous.lastUserMessageSignature !== lastUserMessageSignature
+      (conversationChanged || (agentScrollToBottomAfterSubmit && previous.lastUserMessageSignature !== lastUserMessageSignature))
 
     autoScrollStateRef.current = { conversationId, lastUserMessageSignature }
     if (!shouldScroll) return
 
     const frame = window.requestAnimationFrame(() => {
-      scrollToAgentBottom()
+      scrollToAgentBottom(conversationChanged ? 'auto' : 'smooth')
     })
     return () => window.cancelAnimationFrame(frame)
   }, [activeMessages, agentScrollToBottomAfterSubmit, appMode, conversation?.id, scrollToAgentBottom])
@@ -412,109 +385,6 @@ export default function AgentWorkspace() {
     setAgentEditingRoundId(null)
     setScrollTargetRoundId(nextRound.id)
   }
-
-  const handleDeleteConversation = (id: string) => {
-    const targetConversation = conversations.find((item) => item.id === id) ?? null
-    const roundIds = new Set(targetConversation?.rounds.map((round) => round.id) ?? [])
-    const roundTaskIds = targetConversation?.rounds.flatMap((round) => round.outputTaskIds) ?? []
-    const relatedTasks = tasks.filter((task) =>
-      task.agentConversationId === id || Boolean(task.agentRoundId && roundIds.has(task.agentRoundId)),
-    )
-    const existingTaskIds = new Set(tasks.map((task) => task.id))
-    const relatedTaskIds = Array.from(new Set([...roundTaskIds, ...relatedTasks.map((task) => task.id)]))
-      .filter((taskId) => existingTaskIds.has(taskId))
-    const relatedTaskIdSet = new Set(relatedTaskIds)
-    const generatedImageCount = new Set(
-      tasks
-        .filter((task) => relatedTaskIdSet.has(task.id))
-        .flatMap((task) => task.outputImages || []),
-    ).size
-
-    setConfirmDialog({
-      title: '删除对话',
-      message: '确定要删除这个 Agent 对话吗？',
-      checkbox: generatedImageCount > 0
-        ? {
-            label: `同时删除对话中生成的图片（${generatedImageCount} 张）`,
-            tone: 'danger',
-          }
-        : undefined,
-      action: async (deleteGeneratedImages = false) => {
-        deleteConversation(id)
-        if (deleteGeneratedImages && relatedTaskIds.length > 0) await removeMultipleTasks(relatedTaskIds)
-      },
-    })
-  }
-
-  const startRenameConversation = (e: ReactMouseEvent | React.TouchEvent, id: string, currentTitle: string) => {
-    e.stopPropagation()
-    if (agentGeneratingTitleIds[id]) {
-      showToast('标题生成中，暂不能修改标题', 'info')
-      return
-    }
-    setAgentEditingConversationId(id)
-    setEditingConversationTitle(currentTitle)
-  }
-
-  const confirmRenameConversation = () => {
-    if (agentEditingConversationId && editingConversationTitle.trim() && !agentGeneratingTitleIds[agentEditingConversationId]) {
-      renameConversation(agentEditingConversationId, editingConversationTitle.trim())
-    }
-    setAgentEditingConversationId(null)
-  }
-
-  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      confirmRenameConversation()
-    } else if (e.key === 'Escape') {
-      e.preventDefault()
-      setAgentEditingConversationId(null)
-    }
-  }
-
-  // Effect to sync title when editing id is set from outside (e.g. Header)
-  useEffect(() => {
-    if (agentEditingConversationId) {
-      const convo = conversations.find(c => c.id === agentEditingConversationId)
-      if (convo) {
-        setEditingConversationTitle(convo.title)
-      }
-    }
-  }, [agentEditingConversationId, conversations])
-
-  const clearConversationLongPressTimer = () => {
-    if (conversationLongPressTimer.current == null) return
-    window.clearTimeout(conversationLongPressTimer.current)
-    conversationLongPressTimer.current = null
-  }
-
-  const handleConversationPointerDown = (id: string, e: React.PointerEvent) => {
-    if (e.pointerType === 'mouse') return
-    clearConversationLongPressTimer()
-    conversationLongPressTimer.current = window.setTimeout(() => {
-      setConversationActionsId(id)
-      conversationLongPressTimer.current = null
-    }, 450)
-  }
-
-  const handleConversationSelect = (id: string) => {
-    setActiveConversationId(id)
-    if (conversationActionsId && conversationActionsId !== id) setConversationActionsId(null)
-  }
-
-  useEffect(() => {
-    if (!conversationActionsId) return
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as HTMLElement | null
-      if (target?.closest('[data-agent-conversation-item]')) return
-      setConversationActionsId(null)
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown, { capture: true })
-    return () => document.removeEventListener('pointerdown', handlePointerDown, { capture: true })
-  }, [conversationActionsId])
 
   const handleDeleteMessage = (message: AgentMessage, round: AgentRound) => {
     const isUserMessage = message.role === 'user'
@@ -624,7 +494,7 @@ export default function AgentWorkspace() {
   return (
     <main 
       data-agent-workspace 
-      className="safe-area-x mx-auto flex min-h-[calc(100vh-100px)] flex-col lg:flex-row max-w-7xl lg:gap-3 px-3 lg:px-0 relative overflow-visible transition-all duration-300"
+      className="relative flex min-h-[calc(100dvh-var(--header-height))] overflow-visible"
     >
       {/* Pull Down Indicator */}
       {pullDownOffset > 0 && !agentMobileHeaderVisible && (
@@ -638,155 +508,80 @@ export default function AgentWorkspace() {
         </div>
       )}
 
-      {/* Mobile Left Sidebar Overlay Backdrop */}
-      {!sidebarCollapsed && (
-        <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSidebarCollapsed(true)} />
+      {historyVisible && (
+        <AgentHistorySidebar
+          key={privacyModeEpoch}
+          conversations={conversations}
+          activeId={activeConversationId}
+          loading={!conversationsLoaded}
+          drawer={!wideHistory}
+          onClose={() => {
+            if (wideHistory) setSidebarCollapsed(true)
+            else setHistoryDrawerOpen(false)
+            window.requestAnimationFrame(() => historyToggleRef.current?.focus({ preventScroll: true }))
+          }}
+          onCreate={handleCreateConversation}
+          onSelect={(id) => {
+            setActiveConversationId(id)
+            setHistoryDrawerOpen(false)
+          }}
+        />
       )}
-      
-      {/* Left Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 flex w-4/5 max-w-[320px] flex-col border-r border-gray-200 bg-white/95 shadow-2xl backdrop-blur transition-transform duration-300 dark:border-white/[0.08] dark:bg-gray-950/95 lg:hidden ${!sidebarCollapsed ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="pl-[max(1rem,env(safe-area-inset-left))] flex h-full min-h-0 w-full flex-col">
-          <div className="safe-area-top shrink-0">
-            <div className="flex h-14 items-center justify-between gap-2 px-4">
-              <button type="button" onClick={() => setSidebarCollapsed(true)} className="lg:hidden p-2 -ml-2 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 rounded-lg transition-colors" title="折叠左侧边栏">
-                <SidebarLeftIcon className="w-5 h-5" />
-              </button>
-              <button type="button" onClick={createConversation} className="p-2 -mr-2 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 lg:hover:bg-gray-100 lg:dark:hover:bg-white/[0.04] rounded-lg transition-colors" title="新对话">
-                <EditIcon className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-          <div className="shrink-0 px-4 pb-3">
-            <input
-              type="text"
-              value={conversationSearchQuery}
-              onChange={(e) => setConversationSearchQuery(e.target.value)}
-              placeholder="搜索聊天..."
-              className="w-full rounded-xl border border-transparent bg-black/[0.04] px-3 py-2 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-blue-400 focus:bg-white dark:bg-white/[0.06] dark:text-white dark:focus:border-blue-400 dark:focus:bg-white/[0.07]"
-            />
-          </div>
-          <div className="space-y-1 overflow-y-auto flex-1 px-4 pb-4">
-          {filteredConversations.length === 0 && (
-            <div className="px-2 py-8 text-center text-sm text-gray-400">没有找到匹配的聊天</div>
-          )}
-          {filteredConversations.map((item) => {
-            const isGeneratingTitle = Boolean(agentGeneratingTitleIds[item.id])
-            return (
-              <div
-                key={item.id}
-                data-agent-conversation-item
-                className="group flex h-14 items-center gap-2 rounded-lg px-2 hover:bg-gray-100 dark:hover:bg-white/[0.04]"
-                onPointerDown={(e) => handleConversationPointerDown(item.id, e)}
-                onPointerUp={clearConversationLongPressTimer}
-                onPointerCancel={clearConversationLongPressTimer}
-                onPointerLeave={clearConversationLongPressTimer}
-                onContextMenu={(e) => {
-                  if (conversationActionsId === item.id) e.preventDefault()
-                }}
+
+      <section className="relative flex min-w-0 flex-1 flex-col">
+        <div
+          className="sticky top-[var(--header-height)] z-20 border-b border-gray-200/80 bg-white/90 backdrop-blur dark:border-white/[0.08] dark:bg-gray-950/90"
+          onTouchStart={handleHeaderTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div className="mx-auto flex min-h-12 max-w-4xl items-center gap-2 px-3 sm:px-5">
+            {!historyVisible && (
+              <button
+                ref={historyToggleRef}
+                type="button"
+                aria-label="展开历史对话"
+                aria-expanded={false}
+                onClick={() => wideHistory ? setSidebarCollapsed(false) : setHistoryDrawerOpen(true)}
+                className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-sm text-gray-600 transition-colors hover:bg-black/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:text-gray-300 dark:hover:bg-white/[0.08]"
               >
-                {agentEditingConversationId === item.id ? (
-                  <div className="min-w-0 flex-1 flex flex-col justify-center h-[38px]">
-                    <input
-                      type="text"
-                      className="h-7 flex-1 bg-white dark:bg-black/20 border border-blue-400/50 dark:border-white/20 rounded px-1.5 py-0 text-sm leading-7 outline-none text-gray-900 dark:text-white focus:border-blue-500 dark:focus:border-white/40 shadow-sm min-w-0"
-                      value={editingConversationTitle}
-                      onChange={(e) => setEditingConversationTitle(e.target.value)}
-                      onKeyDown={handleRenameKeyDown}
-                      onClick={(e) => e.stopPropagation()}
-                      autoFocus
-                      onBlur={confirmRenameConversation}
-                    />
-                  </div>
-                ) : (
-                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => handleConversationSelect(item.id)}>
-                    <div className={`truncate ${item.id === activeConversationId ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'}`}>{item.title}</div>
-                    <div className="text-xs text-gray-400">{formatTime(item.updatedAt)}</div>
-                  </button>
-                )}
-                <div className={`flex shrink-0 items-center gap-1 overflow-hidden transition-all duration-150 ${agentEditingConversationId === item.id ? 'w-6 opacity-100' : `group-hover:w-[4.5rem] group-hover:opacity-100 group-focus-within:w-[4.5rem] group-focus-within:opacity-100 ${conversationActionsId === item.id ? 'w-[4.5rem] opacity-100' : 'w-0 opacity-0'}`}`}>
-                  {agentEditingConversationId === item.id ? (
-                    <AgentActionButton
-                      tooltip="确认"
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); confirmRenameConversation() }}
-                      className="p-1.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded-md text-green-500 hover:text-green-600 transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </AgentActionButton>
-                  ) : (
-                    <>
-                      <AgentActionButton tooltip="编辑标题" className="p-1.5 text-gray-400 hover:text-gray-700 disabled:text-gray-300 disabled:hover:text-gray-300 disabled:cursor-not-allowed dark:hover:text-gray-200 dark:disabled:text-gray-600 dark:disabled:hover:text-gray-600" onClick={(e) => startRenameConversation(e, item.id, item.title)} disabled={isGeneratingTitle}>
-                        <EditIcon className="w-4 h-4" />
-                      </AgentActionButton>
-                      <AgentActionButton tooltip="删除" className="p-1.5 text-gray-400 hover:text-red-600" onClick={(e) => { e.stopPropagation(); handleDeleteConversation(item.id) }}>
-                        <TrashIcon className="w-4 h-4" />
-                      </AgentActionButton>
-                    </>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-        </div>
-      </aside>
-
-      {/* Center Chat Area */}
-      <section className="min-w-0 flex-1 flex flex-col relative">
-        {/* Mobile Header Toggles */}
-        <div className={`sticky top-0 z-20 lg:hidden overflow-hidden transition-all duration-300 ease-in-out ${mobileTopBarVisible ? 'max-h-16 opacity-100 mb-2' : 'max-h-0 opacity-0 mb-0 pointer-events-none'}`}>
-          <div
-            className="flex h-14 items-center justify-between border-b border-gray-200 bg-white/80 px-2 backdrop-blur dark:border-white/[0.08] dark:bg-gray-950/80"
-            onTouchStart={handleHeaderTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-          >
-            <button type="button" onClick={() => setSidebarCollapsed(false)} className="p-2 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.04] rounded-lg transition-colors" title="展开对话列表">
-              <SidebarLeftIcon className="w-5 h-5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSidebarCollapsed(false)
-                if (conversation) {
-                  useStore.getState().setAgentEditingConversationId(conversation.id)
-                }
-              }}
-              className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate flex-1 text-center px-2 hover:bg-gray-100 dark:hover:bg-white/[0.04] rounded transition-colors"
-            >
-              {conversation?.title || 'Agent'}
-            </button>
-            <button type="button" onClick={createConversation} className="p-2 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.04] rounded-lg transition-colors" title="新对话">
-              <EditIcon className="w-5 h-5" />
-            </button>
+                <SidebarLeftIcon className="h-4 w-4" />
+                历史对话
+              </button>
+            )}
+            <h1 className="min-w-0 flex-1 truncate px-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              {conversation?.title || '新对话'}
+            </h1>
+            {!historyVisible && (
+              <AgentActionButton
+                tooltip="新建对话"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-black/[0.06] hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/[0.08] dark:hover:text-gray-100"
+                onClick={handleCreateConversation}
+              >
+                <PlusIcon className="h-4 w-4" />
+              </AgentActionButton>
+            )}
           </div>
         </div>
 
-        <div 
-          ref={scrollContainerRef}
-          className="flex-1 space-y-4 overflow-visible pb-[calc(var(--input-bar-clearance,12rem)+1.5rem)] px-1 lg:pt-14 lg:px-4"
+        <div
+          className="mx-auto w-full max-w-4xl flex-1 space-y-4 overflow-visible px-3 pb-[calc(var(--input-bar-clearance,12rem)+1.5rem)] pt-5 sm:px-5 sm:pt-7"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          {!conversation ? (
-            <div className="py-20 text-center text-gray-400">
-              <p className="mb-3">还没有 Agent 对话</p>
-              <button type="button" onClick={createConversation} className="rounded-lg bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 transition-colors">创建对话</button>
+          {!conversation || activeMessages.length === 0 ? (
+            <div className="flex min-h-[min(38vh,22rem)] flex-col items-center justify-center px-3 text-center">
+              <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-300">
+                <SparklesIcon className="h-6 w-6" />
+              </span>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                {conversationsLoaded ? '开始一段新对话' : '正在读取对话…'}
+              </h2>
+              {conversationsLoaded && <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">发送消息，或添加参考图开始创作。</p>}
             </div>
           ) : (
             (() => {
-              if (activeMessages.length === 0) {
-                return (
-                  <div className="py-20 text-center text-gray-400">
-                    <p className="mb-2">开始新的 Agent 对话</p>
-                    <p className="text-xs">在底部输入框发送消息即可创建第一轮对话。</p>
-                  </div>
-                )
-              }
-
               const renderedMessages = activeMessages.map((message) => {
                 const round = conversation.rounds.find((item) => item.id === message.roundId)
                 const isAssistant = message.role === 'assistant'
@@ -1066,7 +861,7 @@ export default function AgentWorkspace() {
         </div>
 
         <button
-          onClick={scrollToAgentBottom}
+          onClick={() => scrollToAgentBottom()}
           className={`fixed bottom-[calc(var(--input-bar-clearance,12rem)+1.5rem)] left-[calc((100%-var(--page-scrollbar-width))/2)] -translate-x-1/2 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 backdrop-blur shadow-[0_2px_12px_rgba(0,0,0,0.1)] border border-gray-200/50 text-gray-500 transition-all duration-300 hover:bg-gray-50 hover:text-gray-800 dark:border-white/[0.08] dark:bg-gray-800/90 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${
             !isScrolledToBottom && activeMessages.length > 0 ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0 pointer-events-none'
           }`}

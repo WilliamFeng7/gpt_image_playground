@@ -280,3 +280,24 @@ export function getConversationSearchText(conversation: AgentConversation) {
     ...conversation.rounds.map((round) => round.prompt),
   ].map(stripImageMentionMarkers).join('\n').toLocaleLowerCase()
 }
+
+export function groupAgentConversationHistory(conversations: AgentConversation[], now = new Date()) {
+  const sections = [
+    { label: '今天', daysAgo: 0 },
+    { label: '昨天', daysAgo: 1 },
+    { label: '最近 7 天', daysAgo: 6 },
+    { label: '最近 30 天', daysAgo: 29 },
+    { label: '更早', daysAgo: Infinity },
+  ]
+  const groups = sections.map(({ label, daysAgo }) => ({
+    label,
+    start: daysAgo === Infinity ? -Infinity : new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo).getTime(),
+    conversations: [] as AgentConversation[],
+  }))
+
+  for (const conversation of [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)) {
+    groups.find((group) => conversation.updatedAt >= group.start)?.conversations.push(conversation)
+  }
+
+  return groups.filter((group) => group.conversations.length > 0)
+}

@@ -23,9 +23,19 @@
   /* 顶栏（Header.tsx）的高度，与 .safe-area-top、.safe-header-inner、下边框及窄屏的第二行一致；用于让页面滚动条从顶栏下方开始 */
   --header-row2-height: 0px;
   --header-height: calc(var(--safe-area-top) + 3.5rem + 1px + var(--header-row2-height));
+  --agent-history-width: 16rem;
   /* 细滚动条的宽度，也是 [data-page-scroll] 滚动条的宽度：顶栏、输入栏等 fixed 元素按窗口宽度定位，需让出它才能与页面内容对齐 */
   --page-scrollbar-width: 0px;
   scrollbar-gutter: stable;
+}
+
+@media (min-width: 1024px) {
+  [data-input-bar][data-agent-history-open] {
+    --agent-chat-width: calc(100% - var(--page-scrollbar-width) - var(--agent-history-width));
+    left: calc((100% - var(--page-scrollbar-width) + var(--agent-history-width)) / 2);
+    min-width: min(56rem, var(--agent-chat-width));
+    max-width: min(80rem, var(--agent-chat-width));
+  }
 }
 
 @media (max-width: 640px) {

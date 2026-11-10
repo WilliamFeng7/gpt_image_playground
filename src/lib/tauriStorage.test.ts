@@ -189,22 +189,22 @@ describe('tauriStorage', () => {
     expect(invoke).toHaveBeenCalledTimes(1)
   })
 
-  it('store 加载时同步完成 hydration，修改后以相同的 key 和格式写回', async () => {
+  it('旧版状态同步迁移为展开的桌面侧栏，收起后写回同一个 key', async () => {
     const persisted = JSON.stringify({ state: { supportPromptDismissed: true, agentSidebarCollapsed: true }, version: 2 })
     // setup 已在导入 store 之前把 kv 读入内存，与 main.tsx 的启动顺序一致
     await setup({ 'gpt-image-playground': persisted })
     const { useStore } = await import('../store')
     expect(useStore.persist.hasHydrated()).toBe(true)
     expect(useStore.getState().supportPromptDismissed).toBe(true)
-    expect(useStore.getState().agentSidebarCollapsed).toBe(true)
+    expect(useStore.getState().agentSidebarCollapsed).toBe(false)
 
-    useStore.setState({ agentSidebarCollapsed: false })
+    useStore.setState({ agentSidebarCollapsed: true })
     await vi.advanceTimersByTimeAsync(300)
     const write = invoke.mock.calls.find(([cmd]) => cmd === 'kv_set')
     expect(write?.[1].key).toBe('gpt-image-playground')
     const saved = JSON.parse(write?.[1].value)
-    expect(saved.version).toBe(2)
-    expect(saved.state.agentSidebarCollapsed).toBe(false)
+    expect(saved.version).toBe(3)
+    expect(saved.state.agentSidebarCollapsed).toBe(true)
     expect(saved.state.supportPromptDismissed).toBe(true)
   })
 })

@@ -2118,7 +2118,7 @@ describe('agent conversation creation', () => {
       updatedAt: 3_000,
     })
     expect(state.agentConversations.find((item) => item.id === olderEmpty.id)).toEqual(olderEmpty)
-    expect(state.agentSidebarCollapsed).toBe(true)
+    expect(state.agentSidebarCollapsed).toBe(false)
     expect(state.agentEditingRoundId).toBeNull()
     now.mockRestore()
   })

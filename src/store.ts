@@ -369,7 +369,6 @@ interface AppState {
   agentAssetPanelCollapsed: boolean
   agentMobileHeaderVisible: boolean
   agentEditingRoundId: string | null
-  agentEditingConversationId: string | null
   agentGeneratingTitleIds: Record<string, true>
   createAgentConversation: () => string
   setActiveAgentConversationId: (id: string | null) => void
@@ -383,7 +382,6 @@ interface AppState {
   setAgentAssetPanelCollapsed: (collapsed: boolean) => void
   setAgentMobileHeaderVisible: (visible: boolean) => void
   setAgentEditingRoundId: (id: string | null) => void
-  setAgentEditingConversationId: (id: string | null) => void
 
   // 任务列表
   tasks: TaskRecord[]
@@ -598,7 +596,6 @@ export const useStore = create<AppState>()(
             appMode: 'agent',
             galleryInputDraft,
             agentMobileHeaderVisible: false,
-            agentSidebarCollapsed: true,
             agentAssetPanelCollapsed: true,
             selectedTaskIds: [],
             selectedFavoriteCollectionIds: [],
@@ -877,12 +874,11 @@ export const useStore = create<AppState>()(
       agentConversationsLoaded: false,
       activeAgentConversationId: null,
       agentInputDrafts: {},
-      agentSidebarCollapsed: true,
+      agentSidebarCollapsed: false,
       agentAssetTab: 'outputs',
       agentAssetPanelCollapsed: false,
       agentMobileHeaderVisible: false,
       agentEditingRoundId: null,
-      agentEditingConversationId: null,
       agentGeneratingTitleIds: {},
       createAgentConversation: () => {
         const now = Date.now()
@@ -898,7 +894,6 @@ export const useStore = create<AppState>()(
               ),
               activeAgentConversationId: latestConversation.id,
               agentInputDrafts,
-              agentSidebarCollapsed: true,
               agentEditingRoundId: null,
               ...restoreAgentInputDraftState(agentInputDrafts, latestConversation.id),
             }
@@ -916,7 +911,6 @@ export const useStore = create<AppState>()(
             ],
             activeAgentConversationId: conversation.id,
             agentInputDrafts,
-            agentSidebarCollapsed: true,
             agentEditingRoundId: null,
             ...restoreAgentInputDraftState(agentInputDrafts, conversation.id),
           }
@@ -927,7 +921,6 @@ export const useStore = create<AppState>()(
         if (state.activeAgentConversationId === id) {
           return {
             activeAgentConversationId: id,
-            agentSidebarCollapsed: true,
             agentAssetPanelCollapsed: true,
             agentEditingRoundId: null,
           }
@@ -936,7 +929,6 @@ export const useStore = create<AppState>()(
         return {
           activeAgentConversationId: id,
           agentInputDrafts,
-          agentSidebarCollapsed: true,
           agentAssetPanelCollapsed: true,
           agentEditingRoundId: null,
           ...restoreAgentInputDraftState(agentInputDrafts, id),
@@ -966,7 +958,6 @@ export const useStore = create<AppState>()(
       setAgentAssetPanelCollapsed: (agentAssetPanelCollapsed) => set({ agentAssetPanelCollapsed }),
       setAgentMobileHeaderVisible: (agentMobileHeaderVisible) => set({ agentMobileHeaderVisible }),
       setAgentEditingRoundId: (agentEditingRoundId) => set({ agentEditingRoundId }),
-      setAgentEditingConversationId: (agentEditingConversationId) => set({ agentEditingConversationId }),
 
       // Tasks
       tasks: [],
@@ -1162,7 +1153,6 @@ export const useStore = create<AppState>()(
           reusedTaskApiModel: null,
           agentMobileHeaderVisible: true,
           agentEditingRoundId: null,
-          agentEditingConversationId: null,
           searchQuery: '',
           filterStatus: 'all',
           filterFavorite: false,
@@ -1192,7 +1182,7 @@ export const useStore = create<AppState>()(
       name: 'gpt-image-playground',
       // 与 zustand 默认存储（window.localStorage）一致；客户端改用预加载到内存的 SQLite kv
       storage: createJSONStorage(() => isTauri ? tauriStorage : window.localStorage),
-      version: 2,
+      version: 3,
       migrate: migratePersistedState,
       partialize: getPersistedState,
       merge: mergePersistedState,

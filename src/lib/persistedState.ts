@@ -144,10 +144,12 @@ export function createPersistedState(state: PersistedStateSource, includeLegacyA
   }
 }
 
-export function migratePersistedState(persistedState: unknown, _version?: number): unknown {
+export function migratePersistedState(persistedState: unknown, version = 0): unknown {
   if (!isRecord(persistedState)) return persistedState
   return {
     ...persistedState,
+    // 旧版保存的是窄屏抽屉状态，桌面侧栏首次使用时展开。
+    ...(version < 3 ? { agentSidebarCollapsed: false } : {}),
     agentConversations: stripPersistedAgentConversations(persistedState.agentConversations),
   }
 }
