@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="150" y1="84" x2="888" y2="943" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4b43a5" />
+      <stop offset=".54" stop-color="#26225e" />
+      <stop offset="1" stop-color="#141835" />
+    </linearGradient>
+    <radialGradient id="tile-light" cx="0" cy="0" r="1" gradientTransform="translate(282 190) rotate(45) scale(715)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8274f2" stop-opacity=".58" />
+      <stop offset="1" stop-color="#8274f2" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="tile-edge" x1="160" y1="92" x2="824" y2="936" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d2caff" stop-opacity=".54" />
+      <stop offset=".62" stop-color="#8d84d9" stop-opacity=".15" />
+      <stop offset="1" stop-color="#060919" stop-opacity=".42" />
+    </linearGradient>
+    <linearGradient id="frame" x1="257" y1="297" x2="740" y2="754" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" />
+      <stop offset="1" stop-color="#d7d9ff" />
+    </linearGradient>
+    <linearGradient id="sky" x1="313" y1="344" x2="746" y2="724" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#cee5ff" />
+      <stop offset="1" stop-color="#9f9bf2" />
+    </linearGradient>
+    <linearGradient id="far-ridge" x1="462" y1="488" x2="681" y2="738" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7764db" />
+      <stop offset="1" stop-color="#4456b9" />
+    </linearGradient>
+    <linearGradient id="near-ridge" x1="365" y1="545" x2="621" y2="736" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#80f3cf" />
+      <stop offset="1" stop-color="#209698" />
+    </linearGradient>
+    <linearGradient id="spark" x1="686" y1="202" x2="814" y2="392" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff5d5" />
+      <stop offset="1" stop-color="#ffc078" />
+    </linearGradient>
+    <filter id="tile-shadow" x="-.12" y="-.12" width="1.24" height="1.28">
+      <feDropShadow dx="0" dy="19" stdDeviation="22" flood-color="#0a0d27" flood-opacity=".29" />
+    </filter>
+    <filter id="frame-shadow" x="-.16" y="-.18" width="1.32" height="1.4">
+      <feDropShadow dx="0" dy="24" stdDeviation="25" flood-color="#0b0927" flood-opacity=".47" />
+    </filter>
+    <clipPath id="photo">
+      <rect x="270" y="333" width="484" height="380" rx="58" />
+    </clipPath>
+  </defs>
+
+  <rect x="78" y="72" width="868" height="868" rx="208" fill="url(#tile)" filter="url(#tile-shadow)" />
+  <rect x="78" y="72" width="868" height="868" rx="208" fill="url(#tile-light)" />
+  <rect x="81" y="75" width="862" height="862" rx="205" fill="none" stroke="url(#tile-edge)" stroke-width="6" />
+
+  <rect x="231" y="294" width="562" height="458" rx="96" fill="url(#frame)" filter="url(#frame-shadow)" />
+  <g clip-path="url(#photo)">
+    <rect x="270" y="333" width="484" height="380" fill="url(#sky)" />
+    <circle cx="412" cy="458" r="48" fill="#fff0cb" />
+    <path d="M253 677 439 519C451 508 470 510 482 522L527 574 612 489C625 476 646 476 659 489L774 612V735H253Z" fill="url(#far-ridge)" />
+    <path d="M248 667 391 548C404 537 423 538 435 551L535 656 598 599C609 588 627 588 639 601L777 729H248Z" fill="url(#near-ridge)" />
+  </g>
+
+  <path d="M741 191C754 246 783 275 838 288C845 290 845 300 838 302C783 315 754 344 741 399C739 406 729 406 727 399C714 344 685 315 630 302C623 300 623 290 630 288C685 275 714 246 727 191C729 184 739 184 741 191Z" fill="url(#spark)" stroke="#352768" stroke-width="16" stroke-linejoin="round" />
+</svg>
