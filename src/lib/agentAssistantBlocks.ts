@@ -74,6 +74,7 @@ export function getAgentAssistantBlocks(round: AgentRound | null, taskSlots: Age
     return true
   })
   const roundInterrupted = isAgentRoundInterrupted(round)
+  const useLiveText = hasText && (round?.status === 'running' || roundInterrupted)
   const blocks: AgentAssistantBlock[] = []
   const renderedTaskIds = new Set<string>()
   const pushTaskSlot = (slot: AgentRoundTaskSlot) => {
@@ -214,7 +215,7 @@ export function getAgentAssistantBlocks(round: AgentRound | null, taskSlots: Age
       continue
     }
 
-    if (item.type === 'message') {
+    if (item.type === 'message' && !useLiveText) {
       const content = getTextFromOutputItem(item)
       if (content) {
         renderedTextBlocks += 1

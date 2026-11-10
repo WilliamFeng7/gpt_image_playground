@@ -356,7 +356,7 @@ function extractText(payload: ResponsesApiResponse) {
     }
   }
 
-  return chunks.join('\n').trim()
+  return chunks.join('\n').trim() || (typeof payload.output_text === 'string' ? payload.output_text.trim() : '')
 }
 
 function decodeXmlText(text: string) {
@@ -449,7 +449,7 @@ async function parseAgentStreamResponse(
   onImageToolCompleted?: (image: AgentApiResultImage) => void | Promise<void>,
   onImageToolFailed?: (event: AgentApiImageToolFailure) => void | Promise<void>,
 ): Promise<AgentApiResult> {
-  let completedPayload: ResponsesApiResponse | null = null
+  let responseSnapshot: ResponsesApiResponse | undefined
   const outputItems: ResponsesOutputItem[] = []
   let streamedText = ''
 
@@ -542,7 +542,9 @@ async function parseAgentStreamResponse(
 
     if (Array.isArray(payload.output)) {
       // `response.completed` uses the output array position as the implicit output index.
-      const indices = type === "response.completed" ? payload.output.map((_, idx) => idx) : undefined
+      const indices = type === 'response.completed' || type === 'response.incomplete'
+        ? payload.output.map((_, idx) => idx)
+        : [getNumberValue(event, 'output_index')]
       publishOutputItems(payload.output, indices)
     }
 
@@ -570,9 +572,7 @@ async function parseAgentStreamResponse(
       return
     }
 
-    if (type === 'response.completed' || isRecordValue(event.response)) {
-      completedPayload = payload
-    }
+    if (isRecordValue(event.response)) responseSnapshot = payload
   }, {
     signals: [signal, callerSignal],
     formatErrorMessage: appendStreamingFormatHint,
@@ -580,8 +580,10 @@ async function parseAgentStreamResponse(
   })
 
   throwIfAborted(signal, callerSignal)
-  const payload: ResponsesApiResponse | null = completedPayload ?? (outputItems.length ? { output: outputItems } : null)
-  if (!payload) throw new Error('Agent 流式接口未返回最终响应数据')
+  if (!responseSnapshot && outputItems.length === 0 && !streamedText.trim()) {
+    throw new Error('Agent 流式接口未返回最终响应数据')
+  }
+  const payload: ResponsesApiResponse = { ...responseSnapshot, output: outputItems }
 
   const text = extractText(payload) || streamedText.trim()
   return {
@@ -643,7 +645,7 @@ export async function callAgentResponsesApi(opts: {
       throw new Error(maybeAppendStreamingHint(errorMessage, response.status, profile.streamImages))
     }
 
-    if (profile.streamImages && isEventStreamResponse(response)) {
+    if (isEventStreamResponse(response)) {
       return await parseAgentStreamResponse(response, mime, controller.signal, signal, onTextDelta, onOutputItems, onImageToolStarted, onImagePartialImage, onImageToolCompleted, onImageToolFailed)
     }
 
@@ -824,7 +826,7 @@ export async function callBatchImageSingle(opts: {
     }
 
     // Handle streaming
-    if (profile.streamImages && isEventStreamResponse(response)) {
+    if (isEventStreamResponse(response)) {
       await onImageToolStarted?.()
       let completedImage: AgentApiResultImage | null = null
       let rawPayload: string | undefined

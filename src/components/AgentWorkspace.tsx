@@ -75,10 +75,10 @@ function ChatImageThumb({ imageId, imageIndex, maskImageId, round }: { imageId: 
 
 function AgentStreamingCursor() {
   return (
-    <span
-      aria-label="正在生成"
-      className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-blue-500 align-baseline dark:bg-blue-400"
-    />
+    <span role="status" className="inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+      <span aria-hidden="true" className="h-2 w-2 animate-pulse rounded-full bg-blue-500 dark:bg-blue-400" />
+      正在等待 Agent 回复
+    </span>
   )
 }
 
@@ -366,15 +366,15 @@ export default function AgentWorkspace() {
 
   useEffect(() => {
     const conversationId = conversation?.id ?? null
-    const lastMessage = activeMessages[activeMessages.length - 1] ?? null
-    const lastUserMessageSignature = lastMessage?.role === 'user'
-      ? `${lastMessage.id}:${lastMessage.createdAt}:${lastMessage.content}`
+    const lastMessage = activeMessages[activeMessages.length - 1]
+    const lastUserMessage = lastMessage?.role === 'assistant' ? activeMessages[activeMessages.length - 2] : lastMessage
+    const lastUserMessageSignature = lastUserMessage?.role === 'user'
+      ? `${lastUserMessage.id}:${lastUserMessage.createdAt}:${lastUserMessage.content}`
       : null
     const previous = autoScrollStateRef.current
     const shouldScroll = appMode === 'agent' &&
       agentScrollToBottomAfterSubmit &&
       previous.conversationId === conversationId &&
-      lastMessage?.role === 'user' &&
       lastUserMessageSignature != null &&
       previous.lastUserMessageSignature !== lastUserMessageSignature
 
@@ -802,8 +802,7 @@ export default function AgentWorkspace() {
                 const hasRoundFavoriteTasks = favoriteTasksForRound.length > 0
                 const allRoundTasksFavorited = hasRoundFavoriteTasks && favoriteTasksForRound.every((task) => task.isFavorite)
                 const assistantBlocks = isAssistant ? getAgentAssistantBlocks(round ?? null, taskSlotsForRound, tasks, Boolean(message.content.trim())) : []
-                const inputImagesForRound = (round?.inputImageIds || []).map(id => ({ id, dataUrl: '' }))
-                const parts = getPromptMentionParts(message.content, inputImagesForRound)
+                const parts = isAssistant ? [] : getPromptMentionParts(message.content, (round?.inputImageIds ?? []).map((id) => ({ id, dataUrl: '' })))
                 return (
                   <div key={message.id} className={`flex w-full mb-6 ${isAssistant ? 'justify-start' : 'justify-end'}`}>
                     <div

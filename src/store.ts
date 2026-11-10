@@ -2896,6 +2896,7 @@ async function executeAgentRound(
   const controller = new AbortController()
   const controllerKey = getAgentRoundControllerKey(conversationId, roundId)
   agentRoundControllers.set(controllerKey, controller)
+  let textFlushTimer: ReturnType<typeof setTimeout> | undefined
   try {
     const latestState = useStore.getState()
     const conversation = latestState.agentConversations.find((item) => item.id === conversationId)
@@ -2903,6 +2904,23 @@ async function executeAgentRound(
     const round = conversation.rounds.find((item) => item.id === roundId)
     const userMessage = round ? conversation.messages.find((message) => message.id === round.userMessageId) : null
     if (!round || !userMessage) return
+    const existingAssistantMessage = round.assistantMessageId
+      ? conversation.messages.find((message) => message.id === round.assistantMessageId) ?? null
+      : conversation.messages.find((message) => message.roundId === roundId && message.role === 'assistant') ?? null
+    const assistantMessageId = existingAssistantMessage?.id ?? genId()
+    const resumedAssistantContent = resume ? existingAssistantMessage?.content.trim() ?? '' : ''
+    updateAgentConversation(conversationId, (current) => ({
+      ...current,
+      updatedAt: Date.now(),
+      rounds: current.rounds.map((item) => item.id === roundId ? { ...item, assistantMessageId } : item),
+      messages: existingAssistantMessage
+        ? current.messages.map((message) => message.id === assistantMessageId
+          ? resume
+            ? { ...message, outputTaskIds: uniqueIds([...(message.outputTaskIds ?? []), ...round.outputTaskIds]) }
+            : { ...message, content: '', outputTaskIds: [] }
+          : message)
+        : [...current.messages, { id: assistantMessageId, role: 'assistant', content: '', roundId, createdAt: startedAt }],
+    }))
     const maskDataUrl = round.maskImageId ? await ensureImageCached(round.maskImageId) : undefined
     if (round.maskImageId && !maskDataUrl) throw new Error('遮罩图片已不存在')
 
@@ -2913,11 +2931,6 @@ async function executeAgentRound(
       loadImage: ensureImageCached,
     })
     if (controller.signal.aborted) throw createAgentAbortError()
-    const existingAssistantMessage = round.assistantMessageId
-      ? conversation.messages.find((message) => message.id === round.assistantMessageId) ?? null
-      : conversation.messages.find((message) => message.roundId === roundId && message.role === 'assistant') ?? null
-    const assistantMessageId = existingAssistantMessage?.id ?? genId()
-    const resumedAssistantContent = resume ? existingAssistantMessage?.content.trim() ?? '' : ''
     const shouldStreamAssistantMessage = activeProfile.streamImages === true
     const imageRequestSettings = createSettingsForApiProfile(requestSettings, imageProfile)
     const imageParams = normalizeParamsForSettings(params, imageRequestSettings, { hasInputImages: round.inputImageIds.length > 0, agent: true })
@@ -3084,31 +3097,6 @@ async function executeAgentRound(
       return false
     }
 
-    if (shouldStreamAssistantMessage) {
-      updateAgentConversation(conversationId, (current) => ({
-        ...current,
-        updatedAt: Date.now(),
-        rounds: current.rounds.map((item) =>
-          item.id === roundId ? { ...item, assistantMessageId } : item,
-        ),
-        messages: current.messages.some((message) => message.id === assistantMessageId)
-          ? current.messages.map((message) => message.id === assistantMessageId
-            ? resume
-              ? { ...message, outputTaskIds: [...new Set([...(message.outputTaskIds ?? []), ...round.outputTaskIds])] }
-              : { ...message, content: '', outputTaskIds: [] }
-            : message)
-          : [
-              ...current.messages,
-              {
-                id: assistantMessageId,
-                role: 'assistant',
-                content: '',
-                roundId,
-                createdAt: Date.now(),
-              },
-            ],
-      }))
-    }
     const maxToolCalls = Number.isFinite(requestSettings.agentMaxToolRounds)
       ? Math.max(1, Math.trunc(requestSettings.agentMaxToolRounds))
       : DEFAULT_AGENT_MAX_TOOL_ROUNDS
@@ -3133,6 +3121,13 @@ async function executeAgentRound(
     }
     let reachedToolLimit = resume ? toolCallsUsed >= maxToolCalls : false
     let pendingToolTextSeparator = false
+    let pendingText = ''
+    const flushStreamText = () => {
+      clearTimeout(textFlushTimer)
+      textFlushTimer = undefined
+      if (!controller.signal.aborted) appendAgentAssistantMessageContent(conversationId, assistantMessageId, pendingText)
+      pendingText = ''
+    }
 
     // Helper: resolve reference image ids to data URLs for batch image calls
     const resolveReferenceImages = async (referenceIds: string[]): Promise<{ dataUrls: string[]; imageIds: string[]; sourceUrls: (string | null)[] }> => {
@@ -3452,6 +3447,7 @@ async function executeAgentRound(
       if (controller.signal.aborted) throw createAgentAbortError()
       if (reachedToolLimit) break
       const textBeforeResponse = accumulatedText
+      const toolCallsBeforeResponse = toolCallsUsed
       let currentResponseOutputItems: ResponsesOutputItem[] = []
       const result = await callAgentResponsesApi({
         settings: requestSettings,
@@ -3463,14 +3459,13 @@ async function executeAgentRound(
         signal: controller.signal,
         onTextDelta: shouldStreamAssistantMessage
           ? (delta) => {
-              if (controller.signal.aborted) return
-              if (pendingToolTextSeparator && delta && accumulatedText.trim()) {
-                accumulatedText += '\n\n'
-                appendAgentAssistantMessageContent(conversationId, assistantMessageId, '\n\n')
-              }
+              if (!delta || controller.signal.aborted) return
+              const text = pendingToolTextSeparator && accumulatedText.trim() ? `\n\n${delta}` : delta
               pendingToolTextSeparator = false
-              accumulatedText += delta
-              appendAgentAssistantMessageContent(conversationId, assistantMessageId, delta)
+              accumulatedText += text
+              pendingText += text
+              // 合并密集的片段，避免每个 token 都重绘并写入整段对话。
+              textFlushTimer ??= setTimeout(flushStreamText, 50)
             }
           : undefined,
         onOutputItems: shouldStreamAssistantMessage
@@ -3516,6 +3511,7 @@ async function executeAgentRound(
           : undefined,
       })
       if (controller.signal.aborted) throw createAgentAbortError()
+      flushStreamText()
 
       lastResponseId = result.responseId ?? lastResponseId
       currentResponseOutputItems = canonicalizeBatchFunctionCallArguments(
@@ -3682,23 +3678,16 @@ async function executeAgentRound(
         (item) => item.type === 'function_call_output' && item.call_id && generatedOutputCallIds.has(item.call_id),
       )
 
-      // If no function calls need output → model decided the task is done → break
-      if (effectiveFunctionCallOutputs.length === 0) {
-        accumulatedOutputItems = accumulatedOutputItemsWithFunctionOutputs
-        updateAgentConversation(conversationId, (current) => ({
-          ...current,
-          updatedAt: Date.now(),
-          rounds: current.rounds.map((item) => item.id === roundId ? { ...item, responseId: lastResponseId, responseOutput: accumulatedOutputItems } : item),
-        }))
-        break
-      }
-
+      accumulatedOutputItems = accumulatedOutputItemsWithFunctionOutputs
       updateAgentConversation(conversationId, (current) => ({
         ...current,
         updatedAt: Date.now(),
-        rounds: current.rounds.map((item) => item.id === roundId ? { ...item, responseId: lastResponseId, responseOutput: accumulatedOutputItemsWithFunctionOutputs } : item),
+        rounds: current.rounds.map((item) => item.id === roundId ? { ...item, responseId: lastResponseId, responseOutput: accumulatedOutputItems } : item),
       }))
 
+      if (effectiveFunctionCallOutputs.length === 0) break
+      // 失败的工具或单独的续跑请求也会发起下一次请求，不能无限重试。
+      if (toolCallsUsed === toolCallsBeforeResponse) toolCallsUsed += 1
       if (toolCallsUsed >= maxToolCalls) {
         reachedToolLimit = true
         break
@@ -3714,14 +3703,13 @@ async function executeAgentRound(
         baseInput: apiInput,
         currentRound: latestRound,
         tasks: continuationState.tasks,
-        currentRoundOutput: accumulatedOutputItemsWithFunctionOutputs,
+        currentRoundOutput: accumulatedOutputItems,
         functionCallOutputs: effectiveFunctionCallOutputs,
         batchTaskIds: streamingTaskIds,
         toolCallsUsed,
         maxToolCalls,
         loadImage: ensureImageCached,
       })
-      accumulatedOutputItems = accumulatedOutputItemsWithFunctionOutputs
       pendingToolTextSeparator = true
     }
 
@@ -3748,7 +3736,10 @@ async function executeAgentRound(
     const finalContent = [joinedText, limitNotice]
       .filter(Boolean)
       .join(joinedText ? '\n\n' : '')
-      || (taskIds.length > 0 || outputIds.length > 0 ? '图像已生成。' : '')
+      || (outputIds.length > 0 ? '图像已生成。' : '')
+    if (!finalContent && taskIds.length === 0 && deletedTasks.length === 0) {
+      throw new Error('Agent 接口未返回文字或图片，请检查 API 配置后重试。')
+    }
 
     const assistantMessage: AgentMessage = {
       id: assistantMessageId,
@@ -3848,6 +3839,7 @@ async function executeAgentRound(
       showTaskCompletionNotification('Agent 回复失败', '请回到应用查看详情。', 'task-failure')
     }
   } finally {
+    clearTimeout(textFlushTimer)
     if (agentRoundControllers.get(controllerKey) === controller) {
       agentRoundControllers.delete(controllerKey)
     }

@@ -4534,6 +4534,45 @@ describe('agent built-in image tool failure', () => {
     })
   })
 
+  it('等待非流式回复时显示 Agent 占位，空响应时结束并提示原因', async () => {
+    const profile = { ...responsesProfile, streamImages: false }
+    useStore.setState({ settings: normalizeSettings({ ...useStore.getState().settings, profiles: [profile] }) })
+    const response = deferred<Awaited<ReturnType<typeof callAgentResponsesApi>>>()
+    vi.mocked(callAgentResponsesApi).mockReturnValueOnce(response.promise)
+
+    await submitAgentMessage()
+    await vi.waitFor(() => expect(callAgentResponsesApi).toHaveBeenCalledOnce())
+    expect(vi.mocked(callAgentResponsesApi).mock.calls[0][0].profile.streamImages).toBe(false)
+    const waiting = useStore.getState().agentConversations[0]
+    expect(waiting.rounds[0].status).toBe('running')
+    expect(waiting.messages).toContainEqual(expect.objectContaining({
+      id: waiting.rounds[0].assistantMessageId,
+      role: 'assistant',
+      content: '',
+    }))
+
+    response.resolve({ text: '', images: [], outputItems: [] })
+    await vi.waitFor(() => expect(useStore.getState().agentConversations[0].rounds[0]).toMatchObject({
+      status: 'error',
+      error: 'Agent 接口未返回文字或图片，请检查 API 配置后重试。',
+    }))
+  })
+
+  it('反复请求续跑但没有图像产出时仍遵守工具轮数上限', async () => {
+    useStore.setState({ settings: { ...useStore.getState().settings, agentMaxToolRounds: 2 } })
+    vi.mocked(callAgentResponsesApi)
+      .mockResolvedValueOnce({ text: '', images: [], outputItems: [{ type: 'function_call', name: 'continue_generation', call_id: 'continue-1' }] })
+      .mockResolvedValueOnce({ text: '', images: [], outputItems: [{ type: 'function_call', name: 'continue_generation', call_id: 'continue-2' }] })
+      .mockResolvedValueOnce({ text: '意外续跑', images: [], outputItems: [] })
+
+    await submitAgentMessage()
+    await vi.waitFor(() => expect(useStore.getState().agentConversations[0].rounds[0].status).toBe('done'))
+
+    expect(callAgentResponsesApi).toHaveBeenCalledTimes(2)
+    expect(useStore.getState().agentConversations[0].messages.find((message) => message.role === 'assistant')?.content)
+      .toContain('已达到最大工具调用次数（2）')
+  })
+
   it('normalizes Agent image params with the Hybrid image profile', async () => {
     const imageProfile = createDefaultOpenAIProfile({
       id: 'codex-image-profile',

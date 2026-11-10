@@ -547,6 +547,7 @@ export interface ResponsesOutputItem {
 
 export interface ResponsesApiResponse {
   id?: string
+  output_text?: string
   output?: ResponsesOutputItem[]
   tools?: Array<{
     type?: string

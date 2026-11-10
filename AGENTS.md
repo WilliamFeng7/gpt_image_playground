@@ -187,7 +187,7 @@ else params = baseParams
   - 相关 PR 或 Issue 编号放在条目末尾，格式为 `（PR #42）` 或 `（Issue #42）`，与已有发布记录保持一致；有子条目时只标在主条目末尾。
   - 外部贡献在 `### 贡献` 中使用 `- @用户名 通过 PR #编号 贡献了……，特此感谢。` 格式致谢。
 - 提升版本号时必须同步更新以下位置：
-  - `package.json` 的 `version`。
+  - `package.json` 的三段构建版本 `version`。四段发布版本同时更新 `displayVersion`，发布版本与构建版本相同时移除该字段。
   - `package-lock.json` 顶层及根包的 `version`。
   - `public/sw.js` 的 `CACHE_NAME` 版本，确保旧缓存能够在 Service Worker 激活时清理。
   - `RELEASE.md` 标题中的版本号和日期。

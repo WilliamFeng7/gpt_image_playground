@@ -163,6 +163,17 @@ describe('apiFetch（客户端）', () => {
     expect(invoke).not.toHaveBeenCalled()
   })
 
+  it('信号中止并取消读取时只通知 Rust 一次', async () => {
+    fakeBackend({}, [])
+    const controller = new AbortController()
+    const res = await apiFetch('https://api.example.com', { signal: controller.signal })
+
+    controller.abort()
+    await res.body!.cancel()
+
+    expect(invoke.mock.calls.filter((call) => call[0] === 'http_cancel')).toHaveLength(1)
+  })
+
   it('读取响应体期间取消：通知 Rust 断开连接，并抛出 signal.reason', async () => {
     fakeBackend({}, [encode('data: 1\n\n'), 'hang'])
     const controller = new AbortController()

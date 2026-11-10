@@ -172,12 +172,12 @@ function loadStreamdown() {
   return streamdownPromise!
 }
 
-function PlainTextMarkdown({ content, className = '', hidden = false }: MarkdownRendererProps & { hidden?: boolean }) {
+function PlainTextMarkdown({ content, className = '' }: MarkdownRendererProps) {
   return (
     <div
       className={`markdown-renderer ${className}`.trim()}
       dir="auto"
-      style={{ whiteSpace: 'pre-wrap', visibility: hidden ? 'hidden' : undefined }}
+      style={{ whiteSpace: 'pre-wrap' }}
     >
       {content}
     </div>
@@ -190,13 +190,10 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   className = '',
 }: MarkdownRendererProps) {
   const [renderer, setRenderer] = useState<MarkdownRendererState>(() => loadedRenderer ?? { type: 'loading' })
-  const [showRawText, setShowRawText] = useState(false)
 
   useEffect(() => {
-    if (renderer.type !== 'loading') return
+    if (streaming || renderer.type !== 'loading') return
     let disposed = false
-    // 渲染库通常很快就能加载完，先隐藏原文并保留占位，加载较慢时再显示原文
-    const timer = setTimeout(() => setShowRawText(true), 300)
 
     loadMarkdownRenderer().then((nextRenderer) => {
       if (!disposed) setRenderer(nextRenderer)
@@ -204,9 +201,11 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
 
     return () => {
       disposed = true
-      clearTimeout(timer)
     }
-  }, [renderer.type])
+  }, [renderer.type, streaming])
+
+  // 流式片段可能截断公式或代码块，回复结束后再解析完整内容。
+  if (streaming) return <PlainTextMarkdown content={content} className={className} />
 
   if (renderer.type === 'legacy') {
     const { ReactMarkdown, remarkGfm } = renderer.module
@@ -224,7 +223,7 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   }
 
   if (renderer.type !== 'modern') {
-    return <PlainTextMarkdown content={content} className={className} hidden={renderer.type === 'loading' && !showRawText} />
+    return <PlainTextMarkdown content={content} className={className} />
   }
 
   const StreamdownComponent = renderer.Component
@@ -241,10 +240,9 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
         table: { copy: true, download: false, fullscreen: true },
       }}
       dir="auto"
-      isAnimating={streaming}
       lineNumbers={false}
-      mode={streaming ? 'streaming' : 'static'}
-      parseIncompleteMarkdown={streaming}
+      mode="static"
+      parseIncompleteMarkdown={false}
       plugins={{ math: renderer.math.math }}
       translations={translations}
       urlTransform={safeUrl}

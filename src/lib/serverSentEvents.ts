@@ -16,9 +16,7 @@ export function parseServerSentEventBlock(block: string): string | null {
     dataLines.push(line.slice(5).replace(/^ /, ''))
   }
 
-  const data = dataLines.join('\n').trim()
-  if (!data || data === '[DONE]') return null
-  return data
+  return dataLines.join('\n').trim() || null
 }
 
 export function throwIfAborted(...signals: Array<AbortSignal | undefined>) {
@@ -42,13 +40,11 @@ export async function readJsonServerSentEvents(
   const cancelReader = () => {
     void reader.cancel().catch(() => undefined)
   }
-  throwIfAborted(...signals)
-  for (const signal of signals) signal?.addEventListener('abort', cancelReader, { once: true })
-
   const processBlock = async (block: string) => {
-    if (block.split(/\r?\n/).some((line) => line.startsWith('data:'))) hasDataLine = true
     const data = parseServerSentEventBlock(block)
     if (!data) return
+    hasDataLine = true
+    if (data === '[DONE]') return true
 
     let event: unknown
     try {
@@ -58,15 +54,19 @@ export async function readJsonServerSentEvents(
     }
     if (!event || typeof event !== 'object' || Array.isArray(event)) return
 
-    const errorMessage = options.getEventErrorMessage?.(event as Record<string, unknown>)
+    const jsonEvent = event as Record<string, unknown>
+    const errorMessage = options.getEventErrorMessage?.(jsonEvent)
     if (errorMessage) throw new Error(errorMessage)
 
     throwIfAborted(...signals)
-    await onEvent(event as Record<string, unknown>)
+    await onEvent(jsonEvent)
     throwIfAborted(...signals)
+    return jsonEvent.type === 'response.completed' || jsonEvent.type === 'response.incomplete'
   }
 
   try {
+    throwIfAborted(...signals)
+    for (const signal of signals) signal?.addEventListener('abort', cancelReader, { once: true })
     while (true) {
       throwIfAborted(...signals)
       const { value, done } = await reader.read()
@@ -74,13 +74,12 @@ export async function readJsonServerSentEvents(
       if (done) break
       buffer += decoder.decode(value, { stream: true })
 
-      let separatorIndex = buffer.search(/\r?\n\r?\n/)
-      while (separatorIndex >= 0) {
-        const block = buffer.slice(0, separatorIndex)
-        const separator = buffer.match(/\r?\n\r?\n/)?.[0] ?? '\n\n'
-        buffer = buffer.slice(separatorIndex + separator.length)
-        await processBlock(block)
-        separatorIndex = buffer.search(/\r?\n\r?\n/)
+      let separator = /\r?\n\r?\n/.exec(buffer)
+      while (separator) {
+        const block = buffer.slice(0, separator.index)
+        buffer = buffer.slice(separator.index + separator[0].length)
+        if (await processBlock(block)) return
+        separator = /\r?\n\r?\n/.exec(buffer)
       }
     }
 
@@ -93,5 +92,8 @@ export async function readJsonServerSentEvents(
     }
   } finally {
     for (const signal of signals) signal?.removeEventListener('abort', cancelReader)
+    // 中转可能在完成事件后保持连接，解析错误时也要释放客户端连接。
+    cancelReader()
+    reader.releaseLock()
   }
 }

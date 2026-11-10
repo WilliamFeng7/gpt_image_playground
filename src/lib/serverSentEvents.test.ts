@@ -15,12 +15,12 @@ describe('serverSentEvents', () => {
     expect(parseServerSentEventBlock(': comment\r\ndata: {"message":\r\ndata: "hello"}\r\n')).toBe('{"message":\n"hello"}')
   })
 
-  it('ignores DONE and blocks without data', () => {
-    expect(parseServerSentEventBlock('data: [DONE]\r\n')).toBeNull()
+  it('recognizes DONE and ignores blocks without data', () => {
+    expect(parseServerSentEventBlock('data: [DONE]\r\n')).toBe('[DONE]')
     expect(parseServerSentEventBlock('event: ping\n: comment')).toBeNull()
   })
 
-  it('reads JSON events and ignores DONE', async () => {
+  it('reads JSON events before DONE', async () => {
     const events: Array<Record<string, unknown>> = []
     const response = new Response('data: {"type":"first",\r\ndata: "value":1}\r\n\r\ndata: [DONE]\r\n\r\n', {
       headers: { 'Content-Type': 'text/event-stream' },

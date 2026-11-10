@@ -39,7 +39,12 @@ export async function apiFetch(input: string | URL, init: RequestInit = {}): Pro
   const body = new Uint8Array(await req.arrayBuffer())
   if (signal?.aborted) throw abortReason(signal)
   const id = crypto.randomUUID()
-  const cancel = () => cancelRequest(id)
+  let canceled = false
+  const cancel = () => {
+    if (canceled) return
+    canceled = true
+    cancelRequest(id)
+  }
   const token = {}
   const settle = () => {
     signal?.removeEventListener('abort', cancel)

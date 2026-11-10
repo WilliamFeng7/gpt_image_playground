@@ -67,6 +67,55 @@ describe('callAgentResponsesApi', () => {
     vi.restoreAllMocks()
   })
 
+  it.each([
+    ['response.completed', { type: 'response.completed', response: { id: 'resp_1', output: [{ type: 'message', content: [{ type: 'output_text', text: '完成' }] }] } }],
+    ['[DONE]', '[DONE]'],
+  ])('遇到 %s 即结束，连接保持打开也能显示回复', async (_label, terminal) => {
+    const cancel = vi.fn()
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const end = typeof terminal === 'string' ? terminal : JSON.stringify(terminal)
+        controller.enqueue(new TextEncoder().encode(`data: {"type":"response.output_text.delta","delta":"完成"}\n\ndata: ${end}\n\n`))
+      },
+      cancel,
+    })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, { headers: { 'Content-Type': 'text/event-stream' } }))
+
+    await expect(callAgentResponsesApi({
+      settings: DEFAULT_SETTINGS,
+      profile: createDefaultOpenAIProfile({ apiKey: 'test-key', apiMode: 'responses', streamImages: true, timeout: 0.1 }),
+      params: DEFAULT_PARAMS,
+      input: 'prompt',
+    })).resolves.toMatchObject({ text: '完成' })
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(body.locked).toBe(false)
+  })
+
+  it('显示兼容接口直接返回的 output_text', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ id: 'resp_1', output_text: '完成' }))
+
+    await expect(callAgentResponsesApi({
+      settings: DEFAULT_SETTINGS,
+      profile: createDefaultOpenAIProfile({ apiKey: 'test-key', apiMode: 'responses' }),
+      params: DEFAULT_PARAMS,
+      input: 'prompt',
+    })).resolves.toMatchObject({ text: '完成' })
+  })
+
+  it('未请求流式传输时也能读取接口返回的 SSE', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      'data: {"type":"response.completed","response":{"output_text":"SSE 回复"}}\n\n',
+      { headers: { 'Content-Type': 'text/event-stream' } },
+    ))
+    await expect(callAgentResponsesApi({
+      settings: DEFAULT_SETTINGS,
+      profile: createDefaultOpenAIProfile({ apiKey: 'test-key', apiMode: 'responses', streamImages: false }),
+      params: DEFAULT_PARAMS,
+      input: 'prompt',
+    })).resolves.toMatchObject({ text: 'SSE 回复' })
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).not.toHaveProperty('stream')
+  })
+
   it('收到响应头后流式停顿时仍按超时中止，并给出中文原因', async () => {
     // 与浏览器一致：信号中止后，读取中的响应体以 signal.reason 报错
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
