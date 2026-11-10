@@ -50,7 +50,7 @@ const SETTING_KEYS = [
   'saveTasksToActiveFavoriteCollection', 'retryMode', 'allowPromptRewrite', 'imagePromptHints', 'taskCompletionNotification', 'autoCheckUpdate', 'writeLogFile', 'enterSubmit',
   'privacyModeShortcut', 'colorMode', 'uiFont', 'uiFontName', 'monoFont', 'monoFontName', 'showBatchPrompt', 'batchPromptEnabled',
   'batchPromptMode', 'batchPromptConcurrencyLimited', 'batchPromptConcurrency', 'referenceImageEditAction', 'zipDownloadRoutes',
-  'saveLocationMode', 'agentScrollToBottomAfterSubmit', 'agentMaxToolRounds', 'agentWebSearch', 'agentMathFormattingPrompt',
+  'saveLocationMode', 'agentScrollToBottomAfterSubmit', 'agentMaxToolRounds', 'agentStreamText', 'agentWebSearch', 'agentMathFormattingPrompt',
   'agentApiConfigMode', 'agentTextProfileId', 'agentImageProfileId',
 ] satisfies Array<keyof AppSettings>
 

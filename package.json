@@ -1,8 +1,8 @@
 {
   "name": "gpt-image-playground",
   "private": true,
-  "version": "0.9.3",
-  "displayVersion": "0.9.0.3",
+  "version": "0.9.4",
+  "displayVersion": "0.9.0.4",
   "type": "module",
   "scripts": {
     "dev": "vite",

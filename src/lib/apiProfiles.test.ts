@@ -1717,6 +1717,11 @@ describe('custom providers', () => {
     expect(normalizeSettings({ agentMathFormattingPrompt: false }).agentMathFormattingPrompt).toBe(false)
   })
 
+  it('enables Agent text streaming for older settings and preserves explicit false', () => {
+    expect(normalizeSettings({}).agentStreamText).toBe(true)
+    expect(normalizeSettings({ agentStreamText: false }).agentStreamText).toBe(false)
+  })
+
   it('disables prompt rewrite allowance by default', () => {
     expect(DEFAULT_SETTINGS.allowPromptRewrite).toBe(false)
     expect(normalizeSettings({}).allowPromptRewrite).toBe(false)

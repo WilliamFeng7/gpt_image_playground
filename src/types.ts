@@ -198,6 +198,7 @@ export interface AppSettings {
   saveLocationMode: SaveLocationMode
   agentScrollToBottomAfterSubmit: boolean
   agentMaxToolRounds: number
+  agentStreamText: boolean
   agentWebSearch: boolean
   agentMathFormattingPrompt: boolean
   agentApiConfigMode: AgentApiConfigMode

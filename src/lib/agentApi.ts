@@ -440,6 +440,7 @@ function getStreamResponsePayload(event: Record<string, unknown>): ResponsesApiR
 async function parseAgentStreamResponse(
   response: Response,
   mime: string,
+  streamSetting: string,
   signal?: AbortSignal,
   callerSignal?: AbortSignal,
   onTextDelta?: (delta: string) => void,
@@ -575,7 +576,7 @@ async function parseAgentStreamResponse(
     if (isRecordValue(event.response)) responseSnapshot = payload
   }, {
     signals: [signal, callerSignal],
-    formatErrorMessage: appendStreamingFormatHint,
+    formatErrorMessage: streamSetting ? (message) => appendStreamingFormatHint(message, streamSetting) : undefined,
     getEventErrorMessage: getStreamEventErrorMessage,
   })
 
@@ -612,6 +613,11 @@ export async function callAgentResponsesApi(opts: {
 }): Promise<AgentApiResult> {
   const { settings, profile, imageProfile, params, input, maskDataUrl, signal, onTextDelta, onOutputItems, onImageToolStarted, onImagePartialImage, onImageToolCompleted, onImageToolFailed } = opts
   const mime = MIME_MAP[params.output_format] || 'image/png'
+  const stream = settings.agentStreamText || profile.streamImages
+  const streamSetting = [
+    settings.agentStreamText && '「文字流式输出」',
+    profile.streamImages && '「流式传输」',
+  ].filter(Boolean).join('和')
   const proxyConfig = readClientDevProxyConfig()
   const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
   const controller = new AbortController()
@@ -628,9 +634,7 @@ export async function callAgentResponsesApi(opts: {
       tools: createAgentTools(params, profile, settings, maskDataUrl),
     }
     if (profile.reasoningEffort) body.reasoning = { effort: profile.reasoningEffort }
-    if (profile.streamImages) {
-      body.stream = true
-    }
+    if (stream) body.stream = true
 
     const response = await apiFetch(buildApiUrl(profile.baseUrl, 'responses', proxyConfig, useApiProxy), {
       method: 'POST',
@@ -642,11 +646,14 @@ export async function callAgentResponsesApi(opts: {
 
     if (!response.ok) {
       const errorMessage = await getApiErrorMessage(response)
-      throw new Error(maybeAppendStreamingHint(errorMessage, response.status, profile.streamImages))
+      throw new Error(maybeAppendStreamingHint(errorMessage, response.status, stream, streamSetting))
     }
 
     if (isEventStreamResponse(response)) {
-      return await parseAgentStreamResponse(response, mime, controller.signal, signal, onTextDelta, onOutputItems, onImageToolStarted, onImagePartialImage, onImageToolCompleted, onImageToolFailed)
+      return await parseAgentStreamResponse(
+        response, mime, streamSetting, controller.signal, signal,
+        onTextDelta, onOutputItems, onImageToolStarted, onImagePartialImage, onImageToolCompleted, onImageToolFailed,
+      )
     }
 
     const rawPayload = await response.json() as unknown

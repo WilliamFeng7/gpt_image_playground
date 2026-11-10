@@ -2921,7 +2921,8 @@ async function executeAgentRound(
       loadImage: ensureImageCached,
     })
     if (controller.signal.aborted) throw createAgentAbortError()
-    const shouldStreamAssistantMessage = activeProfile.streamImages === true
+    const streamAgentText = requestSettings.agentStreamText
+    const streamAgentImages = activeProfile.streamImages === true
     const imageRequestSettings = createSettingsForApiProfile(requestSettings, imageProfile)
     const imageParams = normalizeParamsForSettings(params, imageRequestSettings, { hasInputImages: round.inputImageIds.length > 0, agent: true })
     const streamingTaskIds: string[] = resume ? [...round.outputTaskIds] : []
@@ -3354,12 +3355,12 @@ async function executeAgentRound(
               referenceIds,
               allowPromptRewrite: requestSettings.allowPromptRewrite,
               signal: controller.signal,
-              onImageToolStarted: shouldStreamAssistantMessage
+              onImageToolStarted: streamAgentImages
                 ? async () => {
                     if (controller.signal.aborted) return
                   }
                 : undefined,
-              onPartialImage: shouldStreamAssistantMessage
+              onPartialImage: streamAgentImages
                 ? async ({ image, partialImageIndex }) => {
                     if (controller.signal.aborted) return
                     const taskId = taskIdByToolCallId.get(batchToolCallId)
@@ -3371,7 +3372,7 @@ async function executeAgentRound(
                     }
                   }
                 : undefined,
-              onImageToolCompleted: shouldStreamAssistantMessage
+              onImageToolCompleted: streamAgentImages
                 ? async (image) => {
                     if (controller.signal.aborted) return
                     committed = (await completeAgentImageTask({ ...image, toolCallId: batchToolCallId })).committed
@@ -3381,7 +3382,7 @@ async function executeAgentRound(
 
         if (controller.signal.aborted) throw createAgentAbortError()
         // If not streaming and we have an image, complete the pre-created task.
-        if (batchResult.image && (requestSettings.agentApiConfigMode === 'hybrid' || !shouldStreamAssistantMessage)) {
+        if (batchResult.image && (requestSettings.agentApiConfigMode === 'hybrid' || !streamAgentImages)) {
           committed = (await completeAgentImageTask({ ...batchResult.image, toolCallId: batchToolCallId }, batchResult.rawResponsePayload)).committed
         }
 
@@ -3447,7 +3448,7 @@ async function executeAgentRound(
         input: apiInputForTurn,
         maskDataUrl,
         signal: controller.signal,
-        onTextDelta: shouldStreamAssistantMessage
+        onTextDelta: streamAgentText
           ? (delta) => {
               if (!delta || controller.signal.aborted) return
               const text = pendingToolTextSeparator && accumulatedText.trim() ? `\n\n${delta}` : delta
@@ -3458,7 +3459,7 @@ async function executeAgentRound(
               textFlushTimer ??= setTimeout(flushStreamText, 50)
             }
           : undefined,
-        onOutputItems: shouldStreamAssistantMessage
+        onOutputItems: (streamAgentText || streamAgentImages)
           ? (outputItems) => {
               if (controller.signal.aborted) return
               currentResponseOutputItems = canonicalizeBatchFunctionCallArguments(outputItems)
@@ -3468,13 +3469,13 @@ async function executeAgentRound(
               }))
             }
           : undefined,
-        onImageToolStarted: shouldStreamAssistantMessage
+        onImageToolStarted: streamAgentImages
           ? async ({ toolCallId }) => {
               if (controller.signal.aborted) return
               await ensureStreamingAgentTask(toolCallId)
             }
           : undefined,
-        onImagePartialImage: shouldStreamAssistantMessage
+        onImagePartialImage: streamAgentImages
           ? async ({ toolCallId, image, partialImageIndex }) => {
               if (controller.signal.aborted) return
               const taskId = await ensureStreamingAgentTask(toolCallId)
@@ -3485,13 +3486,13 @@ async function executeAgentRound(
               }
             }
           : undefined,
-        onImageToolCompleted: shouldStreamAssistantMessage
+        onImageToolCompleted: streamAgentImages
           ? async (image) => {
               if (controller.signal.aborted) return
               await completeAgentImageTask(image)
             }
           : undefined,
-        onImageToolFailed: shouldStreamAssistantMessage
+        onImageToolFailed: streamAgentImages
           ? async ({ toolCallId, error }) => {
               if (controller.signal.aborted) return
               await ensureStreamingAgentTask(toolCallId)
@@ -3528,9 +3529,9 @@ async function executeAgentRound(
       if (responseText && accumulatedText === textBeforeResponse) {
         const textToAppend = accumulatedText ? `\n\n${responseText}` : responseText
         accumulatedText += textToAppend
-        if (shouldStreamAssistantMessage) appendAgentAssistantMessageContent(conversationId, assistantMessageId, textToAppend)
+        if (streamAgentText) appendAgentAssistantMessageContent(conversationId, assistantMessageId, textToAppend)
       }
-      const newTextInThisResponse = accumulatedText.slice(textBeforeResponse.length).trim()
+      const newTextInThisResponse = responseText || accumulatedText.slice(textBeforeResponse.length).trim()
       if (newTextInThisResponse) textSegments.push(newTextInThisResponse)
 
       // Process built-in image_generation_call results (single images)

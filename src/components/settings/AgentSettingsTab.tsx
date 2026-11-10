@@ -38,6 +38,14 @@ export default function AgentSettingsTab({
   commitSettings,
   commitAgentMaxToolRounds,
 }: AgentSettingsTabProps) {
+  const toggleAgentSetting = (key: 'agentStreamText' | 'agentWebSearch') => {
+    const agentMaxToolRounds = agentMaxToolRoundsInput.trim() === ''
+      ? DEFAULT_AGENT_MAX_TOOL_ROUNDS
+      : normalizeAgentMaxToolRounds(agentMaxToolRoundsInput, draft.agentMaxToolRounds)
+    setAgentMaxToolRoundsInput(String(agentMaxToolRounds))
+    commitSettings({ ...draft, agentMaxToolRounds, [key]: !draft[key] })
+  }
+
   return (
     <div className="space-y-4">
       <div className="block">
@@ -138,16 +146,28 @@ export default function AgentSettingsTab({
       </label>
       <div className="block">
         <div className="mb-1 flex items-center justify-between gap-3">
+          <span className="block text-sm text-gray-600 dark:text-gray-300">文字流式输出</span>
+          <button
+            type="button"
+            onClick={() => toggleAgentSetting('agentStreamText')}
+            className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${draft.agentStreamText ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+            role="switch"
+            aria-checked={draft.agentStreamText}
+            aria-label="文字流式输出"
+          >
+            <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.agentStreamText ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+          </button>
+        </div>
+        <div data-selectable-text className="text-xs text-gray-500 dark:text-gray-500">
+          收到文字片段后逐步显示回复。关闭后等待完整回复。
+        </div>
+      </div>
+      <div className="block">
+        <div className="mb-1 flex items-center justify-between gap-3">
           <span className="block text-sm text-gray-600 dark:text-gray-300">网络搜索</span>
           <button
             type="button"
-            onClick={() => {
-              const agentMaxToolRounds = agentMaxToolRoundsInput.trim() === ''
-                ? DEFAULT_AGENT_MAX_TOOL_ROUNDS
-                : normalizeAgentMaxToolRounds(agentMaxToolRoundsInput, draft.agentMaxToolRounds)
-              setAgentMaxToolRoundsInput(String(agentMaxToolRounds))
-              commitSettings({ ...draft, agentMaxToolRounds, agentWebSearch: !draft.agentWebSearch })
-            }}
+            onClick={() => toggleAgentSetting('agentWebSearch')}
             className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${draft.agentWebSearch ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
             role="switch"
             aria-checked={draft.agentWebSearch}

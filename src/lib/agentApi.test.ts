@@ -108,12 +108,25 @@ describe('callAgentResponsesApi', () => {
       { headers: { 'Content-Type': 'text/event-stream' } },
     ))
     await expect(callAgentResponsesApi({
-      settings: DEFAULT_SETTINGS,
+      settings: { ...DEFAULT_SETTINGS, agentStreamText: false },
       profile: createDefaultOpenAIProfile({ apiKey: 'test-key', apiMode: 'responses', streamImages: false }),
       params: DEFAULT_PARAMS,
       input: 'prompt',
     })).resolves.toMatchObject({ text: 'SSE 回复' })
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).not.toHaveProperty('stream')
+  })
+
+  it('文字流式请求失败时提示对应的设置', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({
+      error: { message: 'stream is not supported' },
+    }, { status: 400 }))
+
+    await expect(callAgentResponsesApi({
+      settings: DEFAULT_SETTINGS,
+      profile: createDefaultOpenAIProfile({ apiKey: 'test-key', apiMode: 'responses', streamImages: false }),
+      params: DEFAULT_PARAMS,
+      input: 'prompt',
+    })).rejects.toThrow('请尝试关闭「文字流式输出」功能')
   })
 
   it('收到响应头后流式停顿时仍按超时中止，并给出中文原因', async () => {
@@ -140,7 +153,7 @@ describe('callAgentResponsesApi', () => {
     expect(err).toMatchObject({ name: 'AbortError', message: '请求超时：超过 0.05 秒仍未完成，请稍后重试或提高超时时间。' })
   })
 
-  it('streams Agent text and requests configured partial images', async () => {
+  it.each([true, false])('streams Agent text with image previews set to %s', async (streamImages) => {
     const streamBody = [
       'data: {"type":"response.output_text.delta","delta":"Hel"}',
       '',
@@ -159,7 +172,7 @@ describe('callAgentResponsesApi', () => {
     const profile = createDefaultOpenAIProfile({
       apiKey: 'test-key',
       apiMode: 'responses',
-      streamImages: true,
+      streamImages,
       streamPartialImages: 2,
       reasoningEffort: 'xhigh',
       imageGenerationModel: 'gpt-image-2.5-flare',
@@ -178,7 +191,8 @@ describe('callAgentResponsesApi', () => {
     expect(body.stream).toBe(true)
     expect(body.reasoning).toEqual({ effort: 'xhigh' })
     expect(body.tools[0].model).toBe('gpt-image-2.5-flare')
-    expect(body.tools[0].partial_images).toBe(2)
+    if (streamImages) expect(body.tools[0].partial_images).toBe(2)
+    else expect(body.tools[0]).not.toHaveProperty('partial_images')
     expect(textDeltas).toEqual(['Hel', 'lo'])
     expect(result).toMatchObject({
       responseId: 'resp_1',

@@ -4536,13 +4536,13 @@ describe('agent built-in image tool failure', () => {
 
   it('等待非流式回复时显示 Agent 占位，空响应时结束并提示原因', async () => {
     const profile = { ...responsesProfile, streamImages: false }
-    useStore.setState({ settings: normalizeSettings({ ...useStore.getState().settings, profiles: [profile] }) })
+    useStore.setState({ settings: normalizeSettings({ ...useStore.getState().settings, profiles: [profile], agentStreamText: false }) })
     const response = deferred<Awaited<ReturnType<typeof callAgentResponsesApi>>>()
     vi.mocked(callAgentResponsesApi).mockReturnValueOnce(response.promise)
 
     await submitAgentMessage()
     await vi.waitFor(() => expect(callAgentResponsesApi).toHaveBeenCalledOnce())
-    expect(vi.mocked(callAgentResponsesApi).mock.calls[0][0].profile.streamImages).toBe(false)
+    expect(vi.mocked(callAgentResponsesApi).mock.calls[0][0].onTextDelta).toBeUndefined()
     const waiting = useStore.getState().agentConversations[0]
     expect(waiting.rounds[0].status).toBe('running')
     expect(waiting.messages).toContainEqual(expect.objectContaining({
@@ -4556,6 +4556,31 @@ describe('agent built-in image tool failure', () => {
       status: 'error',
       error: 'Agent 接口未返回文字或图片，请检查 API 配置后重试。',
     }))
+  })
+
+  it('关闭图片流式预览时仍逐步显示文字，结束后保留完整回复中的链接', async () => {
+    const profile = { ...responsesProfile, streamImages: false }
+    useStore.setState({ settings: normalizeSettings({ ...useStore.getState().settings, profiles: [profile] }) })
+    const response = deferred<Awaited<ReturnType<typeof callAgentResponsesApi>>>()
+    vi.mocked(callAgentResponsesApi).mockReturnValueOnce(response.promise)
+
+    await submitAgentMessage()
+    await vi.waitFor(() => expect(callAgentResponsesApi).toHaveBeenCalledOnce())
+    const opts = vi.mocked(callAgentResponsesApi).mock.calls[0][0]
+    expect(opts.onImagePartialImage).toBeUndefined()
+    opts.onTextDelta?.('查看')
+    await vi.waitFor(() => expect(useStore.getState().agentConversations[0].messages).toContainEqual(
+      expect.objectContaining({ role: 'assistant', content: '查看' }),
+    ))
+    expect(useStore.getState().agentConversations[0].rounds[0].status).toBe('running')
+
+    opts.onTextDelta?.('文档')
+    const text = '查看[文档](https://example.com)'
+    response.resolve({ text, images: [], outputItems: [] })
+    await vi.waitFor(() => expect(useStore.getState().agentConversations[0].rounds[0].status).toBe('done'))
+    expect(useStore.getState().agentConversations[0].messages).toContainEqual(
+      expect.objectContaining({ role: 'assistant', content: text }),
+    )
   })
 
   it('反复请求续跑但没有图像产出时仍遵守工具轮数上限', async () => {
